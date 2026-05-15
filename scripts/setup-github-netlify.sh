@@ -24,8 +24,10 @@ fi
 
 if ! "$GH" auth status &>/dev/null; then
   echo ""
-  echo ">>> 請在瀏覽器完成 GitHub 登入（會自動開啟或顯示驗證碼）"
-  "$GH" auth login -h github.com -p https -w
+  echo ">>> 驗證碼會出現在下方（! First copy your one-time code: XXXX-XXXX）"
+  echo ">>> 到 https://github.com/login/device 輸入後，回到此終端機等待完成"
+  # 自動回答「用 GitHub 登入 Git」並開啟瀏覽器（免再按 Enter）
+  { printf 'y\n\n'; } | "$GH" auth login -h github.com -p https -w
 fi
 
 USER="$("$GH" api user -q .login)"
