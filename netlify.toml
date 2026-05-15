@@ -1,0 +1,16 @@
+# Netlify：從 GitHub 自動部署 Expo Web（靜態輸出）
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  command = "npm ci && npm run build:web"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# 子路徑直接重新整理時，仍導向對應靜態頁（Expo Router 靜態匯出）
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
