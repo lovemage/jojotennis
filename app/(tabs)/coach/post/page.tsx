@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import PageHero from "@/components/PageHero";
 import { taiwanCities } from "@/data/cities";
+import { useApp } from "@/context/AppContext";
 
 const ntrpOptions = [
   "1.0",
@@ -37,7 +39,47 @@ const budgetOptions = [
 ];
 
 export default function CoachPostPage() {
+  const router = useRouter();
+  const { user, addStudentNeed } = useApp();
+  const [title, setTitle] = useState("");
+  const [city, setCity] = useState("台北市");
+  const [district, setDistrict] = useState("");
+  const [targetLevel, setTargetLevel] = useState("NTRP 2.0");
+  const [preferredTimes, setPreferredTimes] = useState<string[]>([]);
+  const [budget, setBudget] = useState("NT$1,000–1,500");
   const [intro, setIntro] = useState("");
+  const [status, setStatus] = useState("");
+
+  function toggleTime(option: string) {
+    setPreferredTimes((current) =>
+      current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option],
+    );
+  }
+
+  function submitNeed(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) {
+      router.push("/auth");
+      return;
+    }
+
+    addStudentNeed({
+      title: title.trim() || "學員尋找網球教練",
+      city,
+      district: district.trim() || "地區彈性",
+      targetLevel,
+      preferredTime: preferredTimes.length > 0 ? preferredTimes.join("、") : "彈性配合",
+      budget,
+      intro: intro.trim() || "希望找到適合的教練協助安排課程。",
+    });
+    setStatus("學習需求已發布，教練可以在找學生列表看到你的需求。");
+    setTitle("");
+    setDistrict("");
+    setPreferredTimes([]);
+    setIntro("");
+  }
 
   return (
     <section className="mx-auto max-w-md px-6 py-10">
@@ -47,21 +89,37 @@ export default function CoachPostPage() {
         description="讓教練了解你的程度、預算與學習目標。"
       />
 
-      <form className="mt-6 space-y-4 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
+      <form
+        onSubmit={submitNeed}
+        className="mt-6 space-y-4 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
+      >
         <input
+          required
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="初學者找啟蒙教練"
           className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
         />
-        <select className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay">
+        <select
+          value={city}
+          onChange={(event) => setCity(event.target.value)}
+          className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+        >
           {taiwanCities.map((city) => (
             <option key={city}>{city}</option>
           ))}
         </select>
         <input
+          value={district}
+          onChange={(event) => setDistrict(event.target.value)}
           placeholder="地區，例如：大安區"
           className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
         />
-        <select className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay">
+        <select
+          value={targetLevel}
+          onChange={(event) => setTargetLevel(event.target.value)}
+          className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+        >
           {ntrpOptions.map((level) => (
             <option key={level}>NTRP {level}</option>
           ))}
@@ -72,14 +130,22 @@ export default function CoachPostPage() {
           <div className="mt-2 space-y-2">
             {timeOptions.map((option) => (
               <label key={option} className="flex items-center gap-2 text-sm text-pine">
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                  checked={preferredTimes.includes(option)}
+                  onChange={() => toggleTime(option)}
+                />
                 {option}
               </label>
             ))}
           </div>
         </div>
 
-        <select className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay">
+        <select
+          value={budget}
+          onChange={(event) => setBudget(event.target.value)}
+          className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+        >
           {budgetOptions.map((budget) => (
             <option key={budget}>{budget}</option>
           ))}
@@ -105,11 +171,17 @@ export default function CoachPostPage() {
           </p>
         </div>
 
+        {status ? (
+          <p className="rounded-2xl bg-ivory p-4 text-sm font-bold text-pine">
+            {status}
+          </p>
+        ) : null}
+
         <button
-          type="button"
+          type="submit"
           className="w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
         >
-          發布學習需求
+          {user ? "發布學習需求" : "登入後發布學習需求"}
         </button>
       </form>
     </section>

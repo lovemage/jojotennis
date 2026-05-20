@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { taiwanCities } from "@/data/cities";
 import type { Coach, StudentNeed } from "@/data/coaches";
-import { getUser } from "@/lib/auth";
-import { addMessage } from "@/lib/messageStore";
+import { useApp, type StudentNeedRecord } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 
 type CoachTabsProps = {
@@ -13,14 +12,26 @@ type CoachTabsProps = {
   studentNeeds: StudentNeed[];
 };
 
+type DisplayStudentNeed = StudentNeed & {
+  ownerUid?: string;
+  ownerNickname?: string;
+  createdAt?: number;
+  status?: StudentNeedRecord["status"];
+};
+
 const allCitiesLabel = "全部縣市";
 const allLevelsLabel = "全部等級";
 
-export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
+export default function CoachTabs({
+  coaches = [],
+  studentNeeds = [],
+}: CoachTabsProps) {
+  const { user, sendMessage, studentNeeds: dynamicStudentNeeds = [] } = useApp();
   const [activeTab, setActiveTab] = useState<"coaches" | "students">("coaches");
   const [city, setCity] = useState(allCitiesLabel);
   const [level, setLevel] = useState(allLevelsLabel);
   const [messageTarget, setMessageTarget] = useState("");
+  const [messageTargetUid, setMessageTargetUid] = useState("");
   const [messageRelatedId, setMessageRelatedId] = useState("");
   const [message, setMessage] = useState("");
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -42,33 +53,62 @@ export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
       (city === allCitiesLabel || coach.city === city) &&
       (level === allLevelsLabel || coach.levelRange === level),
   );
-  const filteredStudents = studentNeeds.filter(
+  const combinedStudentNeeds: DisplayStudentNeed[] = useMemo(
+    () => [
+      ...dynamicStudentNeeds
+        .filter((need) => need.status === "active")
+        .map((need) => ({
+          id: need.id,
+          title: need.title,
+          city: need.city,
+          district: need.district,
+          targetLevel: need.targetLevel,
+          preferredTime: need.preferredTime,
+          budget: need.budget,
+          intro: need.intro,
+          ownerUid: need.ownerUid,
+          ownerNickname: need.ownerNickname,
+          createdAt: need.createdAt,
+          status: need.status,
+        })),
+      ...studentNeeds,
+    ],
+    [dynamicStudentNeeds, studentNeeds],
+  );
+  const filteredStudents = combinedStudentNeeds.filter(
     (need) =>
       (city === allCitiesLabel || need.city === city) &&
       (level === allLevelsLabel || need.targetLevel === level),
   );
 
-  function openMessageModal(target: string, relatedId: string) {
-    if (!getUser()) {
+  function openMessageModal(target: string, relatedId: string, toUid: string) {
+    if (!user) {
       setShowLoginPrompt(true);
       return;
     }
 
     setMessageTarget(target);
+    setMessageTargetUid(toUid);
     setMessageRelatedId(relatedId);
     setMessage("");
   }
 
-  function sendMessage() {
-    const user = getUser();
+  function handleSendMessage() {
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
 
-    addMessage({
-      type: "coach_message",
-      from: user?.nickname ?? "你",
+    sendMessage({
+      type: "coach_msg",
+      fromUid: user.uid,
+      fromNickname: user.nickname,
+      toUid: messageTargetUid || "u002",
       content: `${user?.nickname ?? "你"} 傳訊息給你：${message.slice(0, 30)}...`,
       relatedId: messageRelatedId,
     });
     setMessageTarget("");
+    setMessageTargetUid("");
   }
 
   return (
@@ -169,7 +209,7 @@ export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => openMessageModal(coach.name, coach.id)}
+                  onClick={() => openMessageModal(coach.name, coach.id, "u002")}
                   className="mt-4 w-full rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
                 >
                   傳訊息給教練
@@ -211,7 +251,13 @@ export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => openMessageModal("這位學員", need.id)}
+                  onClick={() =>
+                    openMessageModal(
+                      need.ownerNickname ? `${need.ownerNickname}（學員）` : "這位學員",
+                      need.id,
+                      need.ownerUid || "u001",
+                    )
+                  }
                   className="mt-4 w-full rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
                 >
                   我想教這位學員
@@ -233,7 +279,13 @@ export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
         >
           免費登錄教練資訊 →
         </Link>
-        <p className="mt-2 text-xs text-muted">目前完全免費・無需信用卡</p>
+        <p className="mt-2 text-xs text-muted">目前完全免費・無刊登費用</p>
+        <p className="mt-4 whitespace-pre-line text-center text-xs leading-5 text-muted">
+          {`揪揪網球僅提供教練與學員資訊媒合平台，不介入任何交易行為。
+課程費用、上課安排請由雙方自行協議。
+平台對媒合結果、課程品質及任何場外糾紛不負法律責任。
+⚠️ 請勿預先轉帳，謹防詐騙。如遇可疑情況請向警方報案。`}
+        </p>
       </div>
 
       {messageTarget ? (
@@ -259,14 +311,14 @@ export default function CoachTabs({ coaches, studentNeeds }: CoachTabsProps) {
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={sendMessage}
+                onClick={() => setMessageTarget("")}
                 className="rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine"
               >
                 取消
               </button>
               <button
                 type="button"
-                onClick={() => setMessageTarget("")}
+                onClick={handleSendMessage}
                 className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
               >
                 送出訊息

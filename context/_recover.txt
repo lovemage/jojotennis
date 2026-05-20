@@ -1,0 +1,1251 @@
+<user_query>
+這是 JoJo Tennis（揪揪網球）全端架構最終版本。
+請從 STEP 0 開始，每一步完成後告訴我，再繼續下一步。
+不可跳步，不可省略任何欄位。
+
+════════════════════════════════════════
+STEP 0｜安裝套件 & 目錄結構
+════════════════════════════════════════
+
+執行：
+npm install firebase zustand @tanstack/react-query
+npm install -D firebase-tools
+
+建立以下目錄（若已存在保留原檔，以下為新增）：
+src/
+  lib/
+    firebase.ts
+    schema.ts
+    timeUtils.ts
+    softDelete.ts
+    authService.ts
+    userService.ts
+    courtService.ts
+    matchService.ts
+    clubService.ts
+    messageService.ts
+    coachService.ts
+    heartService.ts
+    newsService.ts
+    adminService.ts
+  context/
+    AppContext.tsx
+  hooks/
+    useAuth.ts
+    useMessages.ts
+    useMatch.ts
+
+════════════════════════════════════════
+STEP 1｜lib/firebase.ts
+════════════════════════════════════════
+
+import { initializeApp, getApps } from 'firebase/app'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
+
+const firebaseConfig = {
+  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+}
+
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+export const auth    = getAuth(app)
+export const db      = getFirestore(app)
+export const storage = getStorage(app)
+export const googleProvider = new GoogleAuthProvider()
+export default app
+
+════════════════════════════════════════
+STEP 2｜lib/schema.ts（所有型別，完整版）
+════════════════════════════════════════
+
+export interface BaseDocument {
+  createdAt:  Date
+  updatedAt:  Date
+  isDeleted:  boolean
+  deletedAt?: Date | null
+}
+
+export interface User extends BaseDocument {
+  uid:             string
+  email:           string
+  nickname:        string
+  ntrp:            string
+  region:          string
+  yearsPlaying:    number
+  avatarUrl:       string
+  role:            'user' | 'admin' | 'coach'
+  isActive:        boolean
+  heartsReceived:  number
+  bio?:            string
+}
+
+export interface HeartRecord {
+  id:        string
+  matchId:   string
+  fromUid:   string
+  toUid:     string
+  createdAt: Date
+}
+
+export interface Court extends BaseDocument {
+  courtId:      string
+  name:         string
+  city:         string
+  district:     string
+  address:      string
+  lat:          number
+  lng:          number
+  surfaceType:  'hard' | 'clay' | 'grass'
+  indoor:       'indoor' | 'outdoor'
+  totalCourts:  number
+  hasNightLight: boolean
+  phone:        string
+  bookingUrl:   string
+  openHours:    string
+  status:       'active' | 'pending' | 'closed'
+}
+
+export interface PendingCourt {
+  id:              string
+  name:            string
+  city:            string
+  address:         string
+  description:     string
+  reportedByUid:   string
+  reportedByName:  string
+  status:          'pending' | 'approved' | 'rejected'
+  createdAt:       Date
+}
+
+export interface Match extends BaseDocument {
+  matchId:        string
+  ownerUid:       string
+  ownerNickname:  string
+  title:          string
+  city:           string
+  district:       string
+  venue:          string
+  date:           string
+  weekday:        string
+  startTime:      string
+  endTime:        string
+  ntrpRequired:   string[]
+  totalSlots:     number
+  filledSlots:    number
+  status:         'open' | 'closed' | 'cancelled'
+  note:           string
+}
+
+export interface MatchApplication extends BaseDocument {
+  appId:              string
+  matchId:            string
+  applicantUid:       string
+  applicantNickname:  string
+  status:             'pending' | 'accepted' | 'declined' | 'removed'
+}
+
+export interface Club extends BaseDocument {
+  clubId:       string
+  ownerUid:     string
+  ownerNickname: string
+  name:         string
+  types:        string[]
+  city:         string
+  ntrpLevels:   string[]
+  venue:        string
+  schedule:     string
+  description:  string
+  memberCount:  number
+  contactLine:  string
+}
+
+export interface ClubMember {
+  memberId:  string
+  clubId:    string
+  uid:       string
+  nickname:  string
+  role:      'owner' | 'member'
+  joinedAt:  Date
+  isActive:  boolean
+}
+
+export interface Conversation {
+  convId:              string
+  type:                'direct' | 'match' | 'club'
+  participants:        string[]
+  relatedId?:          string
+  name:                string
+  lastMessage:         string
+  lastSenderNickname:  string
+  updatedAt:           Date
+}
+
+export interface Message {
+  msgId:           string
+  convId:          string
+  senderUid:       string
+  senderNickname:  string
+  content:         string
+  msgType:         'text' | 'system'
+  readBy:          string[]
+  createdAt:       Date
+}
+
+export interface Coach extends BaseDocument {
+  coachId:       string
+  uid:           string
+  nickname:      string
+  city:          string
+  ntrpRange:     string
+  pricePerHour:  number
+  bio:           string
+  rating:        number
+  isVerified:    boolean
+}
+
+export interface StudentPost extends BaseDocument {
+  postId:        string
+  uid:           string
+  nickname:      string
+  city:          string
+  district:      string
+  targetNtrp:    string
+  preferTimes:   string[]
+  budget:        string
+  description:   string
+}
+
+export interface News extends BaseDocument {
+  newsId:        string
+  title:         string
+  slug:          string
+  category:      '賽事' | '品牌' | '新品' | '活動' | '教學'
+  content:       string
+  excerpt:       string
+  coverImageUrl: string
+  isPublished:   boolean
+  publishedAt:   Date
+}
+
+════════════════════════════════════════
+STEP 3｜lib/timeUtils.ts
+════════════════════════════════════════
+
+export function matchStartUTC(date: string, time: string): Date {
+  const [y, m, d] = date.replace(/\//g, '-').split('-').map(Number)
+  const [h, min]  = time.split(':').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, h - 8, min))
+}
+
+export function isWithin24Hours(date: string, startTime: string): boolean {
+  const start = matchStartUTC(date, startTime)
+  return start.getTime() - Date.now() <= 24 * 60 * 60 * 1000
+}
+
+export function isTimeRangeValid(start: string, end: string): boolean {
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  return sh * 60 + sm < eh * 60 + em
+}
+
+export function weekdayLabel(dateStr: string): string {
+  const labels = ['日','一','二','三','四','五','六']
+  const d = new Date(dateStr.replace(/\//g, '-'))
+  return `週${labels[d.getDay()]}`
+}
+
+════════════════════════════════════════
+STEP 4｜lib/softDelete.ts
+════════════════════════════════════════
+
+import { db } from './firebase'
+import { doc, updateDoc, writeBatch,
+         collection, query, where,
+         getDocs, serverTimestamp } from 'firebase/firestore'
+
+export async function softDelete(
+  col: string, id: string
+): Promise<void> {
+  await updateDoc(doc(db, col, id), {
+    isDeleted:  true,
+    deletedAt:  serverTimestamp(),
+    updatedAt:  serverTimestamp(),
+  })
+}
+
+export async function softDeleteMatchCascade(matchId: string): Promise<void> {
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'matches', matchId), {
+    isDeleted:  true,
+    deletedAt:  serverTimestamp(),
+    status:     'cancelled',
+    updatedAt:  serverTimestamp(),
+  })
+  const appsSnap = await getDocs(query(
+    collection(db, 'match_applications'),
+    where('matchId',   '==', matchId),
+    where('isDeleted', '==', false)
+  ))
+  appsSnap.forEach(d => batch.update(d.ref, {
+    isDeleted:  true,
+    deletedAt:  serverTimestamp(),
+    updatedAt:  serverTimestamp(),
+  }))
+  await batch.commit()
+}
+
+════════════════════════════════════════
+STEP 5｜lib/authService.ts
+════════════════════════════════════════
+
+import { auth, db, googleProvider } from './firebase'
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged,
+  User as FBUser,
+} from 'firebase/auth'
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import type { User } from './schema'
+
+const BASE_USER = (uid: string, email: string, nickname: string, avatarUrl = '') => ({
+  uid,
+  email,
+  nickname,
+  ntrp:            '2.0',
+  region:          '台北市',
+  yearsPlaying:    0,
+  avatarUrl,
+  role:            'user' as const,
+  isActive:        true,
+  heartsReceived:  0,
+  bio:             '',
+  isDeleted:       false,
+  deletedAt:       null,
+  updatedAt:       serverTimestamp(),
+  createdAt:       serverTimestamp(),
+})
+
+export async function registerWithEmail(
+  email: string, password: string, nickname: string
+): Promise<FBUser> {
+  const cred = await createUserWithEmailAndPassword(auth, email, password)
+  await sendEmailVerification(cred.user)
+  await setDoc(doc(db, 'users', cred.user.uid),
+    BASE_USER(cred.user.uid, email, nickname))
+  return cred.user
+}
+
+export async function loginWithEmail(
+  email: string, password: string
+): Promise<FBUser> {
+  const cred = await signInWithEmailAndPassword(auth, email, password)
+  return cred.user
+}
+
+export async function loginWithGoogle(): Promise<FBUser> {
+  const cred = await signInWithPopup(auth, googleProvider)
+  const ref  = doc(db, 'users', cred.user.uid)
+  if (!(await getDoc(ref)).exists()) {
+    await setDoc(ref, BASE_USER(
+      cred.user.uid,
+      cred.user.email ?? '',
+      cred.user.displayName ?? '網球球友',
+      cred.user.photoURL ?? ''
+    ))
+  }
+  return cred.user
+}
+
+export async function getUserProfile(uid: string): Promise<User | null> {
+  const snap = await getDoc(doc(db, 'users', uid))
+  return snap.exists() ? snap.data() as User : null
+}
+
+export const logout = () => signOut(auth)
+export const onAuthChange = (cb: (u: FBUser | null) => void) =>
+  onAuthStateChanged(auth, cb)
+
+════════════════════════════════════════
+STEP 6｜lib/matchService.ts（完整含邊角案例）
+════════════════════════════════════════
+
+import { db } from './firebase'
+import {
+  collection, addDoc, updateDoc, doc,
+  query, where, orderBy, onSnapshot,
+  getDoc, getDocs, serverTimestamp,
+  increment, runTransaction, setDoc,
+} from 'firebase/firestore'
+import { softDeleteMatchCascade } from './softDelete'
+import { sendSystemMessage, createMatchConversation,
+         addUserToConversation,
+         getOrCreateDirectConversation } from './messageService'
+import { isTimeRangeValid, weekdayLabel } from './timeUtils'
+import type { Match, MatchApplication } from './schema'
+
+const BASE = {
+  isDeleted: false, deletedAt: null, updatedAt: serverTimestamp(),
+}
+
+export async function createMatch(data: {
+  ownerUid: string; ownerNickname: string
+  title: string; city: string; district: string; venue: string
+  date: string; startTime: string; endTime: string
+  ntrpRequired: string[]; totalSlots: number; note: string
+}): Promise<string> {
+  if (!isTimeRangeValid(data.startTime, data.endTime))
+    throw new Error('結束時間必須晚於開始時間')
+  if (data.totalSlots < 1 || data.totalSlots > 8)
+    throw new Error('人數需在 1–8 人之間')
+  if (!data.title.trim())
+    throw new Error('標題不可為空')
+
+  const ref = await addDoc(collection(db, 'matches'), {
+    ...data,
+    ...BASE,
+    weekday:    weekdayLabel(data.date),
+    filledSlots: 0,
+    status:     'open',
+    createdAt:  serverTimestamp(),
+  })
+  await createMatchConversation(ref.id, data.title, data.ownerUid)
+  return ref.id
+}
+
+export function subscribeToMatches(
+  cb: (m: Match[]) => void,
+  city?: string
+) {
+  const filters: any[] = [
+    where('isDeleted', '==', false),
+    where('status', '==', 'open'),
+    orderBy('createdAt', 'desc'),
+  ]
+  if (city) filters.splice(1, 0, where('city', '==', city))
+  return onSnapshot(query(collection(db, 'matches'), ...filters),
+    snap => cb(snap.docs.map(d => ({ matchId: d.id, ...d.data() } as Match)))
+  )
+}
+
+export function subscribeToMyMatches(
+  uid: string,
+  cb: (owned: Match[], joined: MatchApplication[]) => void
+) {
+  const unsubOwned = onSnapshot(
+    query(collection(db, 'matches'),
+      where('ownerUid', '==', uid),
+      where('isDeleted', '==', false),
+      orderBy('createdAt', 'desc')),
+    snap => {
+      const owned = snap.docs.map(d => ({ matchId: d.id, ...d.data() } as Match))
+      const unsubJoined = onSnapshot(
+        query(collection(db, 'match_applications'),
+          where('applicantUid', '==', uid),
+          where('isDeleted', '==', false),
+          orderBy('createdAt', 'desc')),
+        snap2 => cb(owned, snap2.docs.map(d => ({ appId: d.id, ...d.data() } as MatchApplication)))
+      )
+      return unsubJoined
+    }
+  )
+  return unsubOwned
+}
+
+export async function applyToMatch(
+  matchId: string,
+  applicantUid: string,
+  applicantNickname: string
+): Promise<{ ok: boolean; msg: string }> {
+  const mSnap = await getDoc(doc(db, 'matches', matchId))
+  if (!mSnap.exists()) return { ok: false, msg: '球局不存在' }
+  const m = mSnap.data() as Match
+  if (m.isDeleted || m.status === 'cancelled')
+    return { ok: false, msg: '球局已取消' }
+  if (m.status === 'closed')
+    return { ok: false, msg: '球局已額滿' }
+  if (m.ownerUid === applicantUid)
+    return { ok: false, msg: '主揪不需要申請' }
+
+  const dup = await getDocs(query(
+    collection(db, 'match_applications'),
+    where('matchId', '==', matchId),
+    where('applicantUid', '==', applicantUid),
+    where('isDeleted', '==', false)
+  ))
+  const existing = dup.docs[0]?.data()
+  if (existing && !['declined','removed'].includes(existing.status))
+    return { ok: false, msg: '已申請過此球局' }
+
+  await addDoc(collection(db, 'match_applications'), {
+    matchId, applicantUid, applicantNickname,
+    status: 'pending', ...BASE, createdAt: serverTimestamp(),
+  })
+  await sendSystemMessage(`match_${matchId}`,
+    `${applicantNickname} 申請加入，等待主揪確認。`)
+  return { ok: true, msg: '申請已送出' }
+}
+
+export async function respondToApplication(
+  appId: string, matchId: string,
+  accept: boolean,
+  applicantUid: string, applicantNickname: string
+): Promise<void> {
+  const appRef  = doc(db, 'match_applications', appId)
+  const appSnap = await getDoc(appRef)
+  if (!appSnap.exists()) throw new Error('申請不存在')
+  if (appSnap.data().status !== 'pending') throw new Error('此申請已處理')
+
+  let matchTitle = ''
+  await runTransaction(db, async tx => {
+    const mRef  = doc(db, 'matches', matchId)
+    const mSnap = await tx.get(mRef)
+    const m     = mSnap.data() as Match
+    matchTitle  = m.title
+    tx.update(appRef, { status: accept ? 'accepted' : 'declined', updatedAt: serverTimestamp() })
+    if (accept) {
+      const newFilled = m.filledSlots + 1
+      tx.update(mRef, {
+        filledSlots: increment(1),
+        status:      newFilled >= m.totalSlots ? 'closed' : 'open',
+        updatedAt:   serverTimestamp(),
+      })
+    }
+  })
+
+  if (accept) {
+    await addUserToConversation(`match_${matchId}`, applicantUid)
+    await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 已加入球局！`)
+    const mSnap2 = await getDoc(doc(db, 'matches', matchId))
+    if ((mSnap2.data() as Match).status === 'closed')
+      await sendSystemMessage(`match_${matchId}`,
+        `「${matchTitle}」招募完成！祝大家打球愉快 🎾`)
+  }
+
+  const directId = await getOrCreateDirectConversation(applicantUid, applicantNickname)
+  await sendSystemMessage(directId, accept
+    ? `你已被接受加入「${matchTitle}」！請查看球局聊天室確認集合資訊。`
+    : `你申請的「${matchTitle}」未被接受，繼續找其他球友吧！`)
+}
+
+export async function removeFromMatch(
+  matchId: string, targetUid: string,
+  targetNickname: string, matchTitle: string
+): Promise<void> {
+  const snap = await getDocs(query(
+    collection(db, 'match_applications'),
+    where('matchId', '==', matchId),
+    where('applicantUid', '==', targetUid),
+    where('status', '==', 'accepted')
+  ))
+  if (snap.empty) throw new Error('找不到此球友的申請記錄')
+  await updateDoc(snap.docs[0].ref,
+    { status: 'removed', updatedAt: serverTimestamp() })
+  await updateDoc(doc(db, 'matches', matchId),
+    { filledSlots: increment(-1), status: 'open', updatedAt: serverTimestamp() })
+  const convId = await getOrCreateDirectConversation(targetUid, targetNickname)
+  await sendSystemMessage(convId,
+    `您已被主辦人從「${matchTitle}」中移除，如有場地費問題請於此聊天室協調。⚠️ 請勿在平台外轉帳，謹防詐騙。`)
+}
+
+export async function transferMatchOwnership(
+  matchId: string, currentOwnerUid: string,
+  newOwnerUid: string, newOwnerNickname: string
+): Promise<void> {
+  const mSnap = await getDoc(doc(db, 'matches', matchId))
+  const m = mSnap.data() as Match
+  if (m.ownerUid !== currentOwnerUid) throw new Error('只有主揪可轉移主辦權')
+
+  const check = await getDocs(query(
+    collection(db, 'match_applications'),
+    where('matchId', '==', matchId),
+    where('applicantUid', '==', newOwnerUid),
+    where('status', '==', 'accepted'),
+    where('isDeleted', '==', false)
+  ))
+  if (check.empty) throw new Error('新主揪必須是已接受的球友')
+
+  await updateDoc(doc(db, 'matches', matchId), {
+    ownerUid:      newOwnerUid,
+    ownerNickname: newOwnerNickname,
+    updatedAt:     serverTimestamp(),
+  })
+  await sendSystemMessage(`match_${matchId}`,
+    `系統紀錄：主辦權已移交給 ${newOwnerNickname}。`)
+}
+
+export async function cancelMatch(
+  matchId: string, ownerUid: string, matchTitle: string
+): Promise<void> {
+  const mSnap = await getDoc(doc(db, 'matches', matchId))
+  const m = mSnap.data() as Match
+  if (m.ownerUid !== ownerUid) throw new Error('只有主揪可取消活動')
+  if (m.isDeleted) throw new Error('活動已取消')
+
+  await softDeleteMatchCascade(matchId)
+
+  const accepted = await getDocs(query(
+    collection(db, 'match_applications'),
+    where('matchId', '==', matchId),
+    where('status', '==', 'accepted')
+  ))
+  for (const app of accepted.docs) {
+    const { applicantUid, applicantNickname } = app.data()
+    const cId = await getOrCreateDirectConversation(applicantUid, applicantNickname)
+    await sendSystemMessage(cId,
+      `很遺憾，「${matchTitle}」已被主辦人取消。如有問題可在此聊天室聯繫。`)
+  }
+  await sendSystemMessage(`match_${matchId}`, `「${matchTitle}」已取消。感謝各位參與。`)
+}
+
+════════════════════════════════════════
+STEP 7｜lib/messageService.ts（完整版）
+════════════════════════════════════════
+
+import { db } from './firebase'
+import {
+  collection, addDoc, doc, updateDoc, setDoc, getDoc,
+  onSnapshot, query, orderBy, where,
+  serverTimestamp, arrayUnion, arrayRemove,
+} from 'firebase/firestore'
+import type { Conversation, Message } from './schema'
+
+export async function getOrCreateDirectConversation(
+  userBUid: string, userBNickname: string, userAUid?: string
+): Promise<string> {
+  if (!userAUid) throw new Error('需要登入')
+  const convId = [userAUid, userBUid].sort().join('_')
+  const ref    = doc(db, 'conversations', convId)
+  if (!(await getDoc(ref)).exists()) {
+    await setDoc(ref, {
+      convId, type: 'direct',
+      participants: [userAUid, userBUid],
+      name: userBNickname, lastMessage: '',
+      lastSenderNickname: '', updatedAt: serverTimestamp(),
+    })
+  }
+  return convId
+}
+
+export async function createMatchConversation(
+  matchId: string, matchTitle: string, ownerUid: string
+): Promise<void> {
+  await setDoc(doc(db, 'conversations', `match_${matchId}`), {
+    convId: `match_${matchId}`, type: 'match',
+    relatedId: matchId, participants: [ownerUid],
+    name: matchTitle, lastMessage: '',
+    lastSenderNickname: '', updatedAt: serverTimestamp(),
+  })
+}
+
+export async function createClubConversation(
+  clubId: string, clubName: string, ownerUid: string
+): Promise<void> {
+  await setDoc(doc(db, 'conversations', `club_${clubId}`), {
+    convId: `club_${clubId}`, type: 'club',
+    relatedId: clubId, participants: [ownerUid],
+    name: clubName, lastMessage: '',
+    lastSenderNickname: '', updatedAt: serverTimestamp(),
+  })
+}
+
+export const addUserToConversation = (convId: string, uid: string) =>
+  updateDoc(doc(db, 'conversations', convId), { participants: arrayUnion(uid) })
+
+export const removeUserFromConversation = (convId: string, uid: string) =>
+  updateDoc(doc(db, 'conversations', convId), { participants: arrayRemove(uid) })
+
+export async function sendMessage(
+  convId: string, senderUid: string,
+  senderNickname: string, content: string
+): Promise<void> {
+  const t = content.trim()
+  if (!t) throw new Error('訊息不可為空')
+  if (t.length > 500) throw new Error('訊息不可超過 500 字')
+  await addDoc(collection(db, 'conversations', convId, 'messages'), {
+    senderUid, senderNickname, content: t,
+    msgType: 'text', readBy: [senderUid], createdAt: serverTimestamp(),
+  })
+  await updateDoc(doc(db, 'conversations', convId), {
+    lastMessage: t.slice(0, 50),
+    lastSenderNickname: senderNickname,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function sendSystemMessage(convId: string, content: string): Promise<void> {
+  try {
+    await addDoc(collection(db, 'conversations', convId, 'messages'), {
+      senderUid: 'system', senderNickname: '揪揪網球',
+      content, msgType: 'system', readBy: [], createdAt: serverTimestamp(),
+    })
+    await updateDoc(doc(db, 'conversations', convId), {
+      lastMessage: content.slice(0, 50),
+      lastSenderNickname: '系統', updatedAt: serverTimestamp(),
+    })
+  } catch {}
+}
+
+export const subscribeToMessages = (
+  convId: string, cb: (m: Message[]) => void
+) => onSnapshot(
+  query(collection(db, 'conversations', convId, 'messages'),
+    orderBy('createdAt', 'asc')),
+  snap => cb(snap.docs.map(d => ({ msgId: d.id, ...d.data() } as Message)))
+)
+
+export const subscribeToConversations = (
+  uid: string, cb: (c: Conversation[]) => void
+) => onSnapshot(
+  query(collection(db, 'conversations'),
+    where('participants', 'array-contains', uid),
+    orderBy('updatedAt', 'desc')),
+  snap => cb(snap.docs.map(d => ({ convId: d.id, ...d.data() } as Conversation)))
+)
+
+════════════════════════════════════════
+STEP 8｜lib/heartService.ts
+════════════════════════════════════════
+
+import { db } from './firebase'
+import { doc, getDoc, setDoc, updateDoc,
+         increment, serverTimestamp } from 'firebase/firestore'
+
+export async function giveHeart(
+  matchId: string, fromUid: string, toUid: string
+): Promise<{ ok: boolean; msg: string }> {
+  if (fromUid === toUid)
+    return { ok: false, msg: '不能給自己愛心' }
+
+  const mSnap = await getDoc(doc(db, 'matches', matchId))
+  if (!mSnap.exists()) return { ok: false, msg: '球局不存在' }
+  const m = mSnap.data()
+  if (m.isDeleted) return { ok: false, msg: '球局已刪除' }
+  if (!['closed','cancelled'].includes(m.status))
+    return { ok: false, msg: '球局尚未結束' }
+
+  const heartId  = `${matchId}_${fromUid}_${toUid}`
+  const heartRef = doc(db, 'heart_records', heartId)
+  if ((await getDoc(heartRef)).exists())
+    return { ok: false, msg: '已給過愛心' }
+
+  await setDoc(heartRef, {
+    id: heartId, matchId, fromUid, toUid, createdAt: serverTimestamp(),
+  })
+  await updateDoc(doc(db, 'users', toUid), {
+    heartsReceived: increment(1), updatedAt: serverTimestamp(),
+  })
+  return { ok: true, msg: '已給予愛心！' }
+}
+
+════════════════════════════════════════
+STEP 9｜lib/clubService.ts
+════════════════════════════════════════
+
+import { db } from './firebase'
+import {
+  collection, addDoc, updateDoc, doc,
+  query, where, orderBy, onSnapshot,
+  getDocs, serverTimestamp, increment,
+} from 'firebase/firestore'
+import { softDelete } from './softDelete'
+import { createClubConversation,
+         addUserToConversation,
+         removeUserFromConversation,
+         sendSystemMessage } from './messageService'
+import type { Club, ClubMember } from './schema'
+
+const BASE = { isDeleted: false, deletedAt: null, updatedAt: serverTimestamp() }
+
+export async function createClub(data: {
+  ownerUid: string; ownerNickname: string; name: string
+  types: string[]; city: string; ntrpLevels: string[]
+  venue: string; schedule: string; description: string; contactLine: string
+}): Promise<string> {
+  const ref = await addDoc(collection(db, 'clubs'), {
+    ...data, ...BASE, memberCount: 1, createdAt: serverTimestamp(),
+  })
+  await addDoc(collection(db, 'club_members'), {
+    clubId: ref.id, uid: data.ownerUid,
+    nickname: data.ownerNickname, role: 'owner',
+    joinedAt: serverTimestamp(), isActive: true,
+  })
+  await createClubConversation(ref.id, data.name, data.ownerUid)
+  return ref.id
+}
+
+export async function joinClub(
+  clubId: string, uid: string, nickname: string
+): Promise<void> {
+  const dup = await getDocs(query(
+    collection(db, 'club_members'),
+    where('clubId', '==', clubId),
+    where('uid', '==', uid),
+    where('isActive', '==', true)
+  ))
+  if (!dup.empty) throw new Error('已加入此社團')
+  await addDoc(collection(db, 'club_members'), {
+    clubId, uid, nickname, role: 'member',
+    joinedAt: serverTimestamp(), isActive: true,
+  })
+  await updateDoc(doc(db, 'clubs', clubId),
+    { memberCount: increment(1), updatedAt: serverTimestamp() })
+  await addUserToConversation(`club_${clubId}`, uid)
+  await sendSystemMessage(`club_${clubId}`, `${nickname} 加入了社團！`)
+}
+
+export async function leaveClub(
+  clubId: string, uid: string, nickname: string
+): Promise<void> {
+  const snap = await getDocs(query(
+    collection(db, 'club_members'),
+    where('clubId', '==', clubId),
+    where('uid', '==', uid),
+    where('isActive', '==', true)
+  ))
+  if (snap.empty) throw new Error('未加入此社團')
+  await updateDoc(snap.docs[0].ref,
+    { isActive: false, updatedAt: serverTimestamp() })
+  await updateDoc(doc(db, 'clubs', clubId),
+    { memberCount: increment(-1), updatedAt: serverTimestamp() })
+  await removeUserFromConversation(`club_${clubId}`, uid)
+}
+
+export const subscribeToClubs = (cb: (clubs: Club[]) => void, city?: string) => {
+  const filters: any[] = [where('isDeleted', '==', false), orderBy('createdAt', 'desc')]
+  if (city) filters.splice(1, 0, where('city', '==', city))
+  return onSnapshot(query(collection(db, 'clubs'), ...filters),
+    snap => cb(snap.docs.map(d => ({ clubId: d.id, ...d.data() } as Club)))
+  )
+}
+
+════════════════════════════════════════
+STEP 10｜context/AppContext.tsx（全域狀態）
+════════════════════════════════════════
+
+'use client'
+import { createContext, useContext, useState,
+         useEffect, ReactNode } from 'react'
+import { User as FBUser } from 'firebase/auth'
+import { onAuthChange, getUserProfile } from '@/lib/authService'
+import { subscribeToConversations } from '@/lib/messageService'
+import { subscribeToMatches } from '@/lib/matchService'
+import type { User, Match, Conversation } from '@/lib/schema'
+
+interface AppCtx {
+  fbUser:        FBUser | null
+  user:          User | null
+  loading:       boolean
+  matches:       Match[]
+  conversations: Conversation[]
+  unreadTotal:   number
+  refreshUser:   () => Promise<void>
+}
+
+const Ctx = createContext<AppCtx | null>(null)
+export const useApp = () => {
+  const c = useContext(Ctx)
+  if (!c) throw new Error('useApp must be inside AppProvider')
+  return c
+}
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [fbUser, setFbUser]       = useState<FBUser | null>(null)
+  const [user, setUser]           = useState<User | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [matches, setMatches]     = useState<Match[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+
+  const refreshUser = async () => {
+    if (!fbUser) return
+    const u = await getUserProfile(fbUser.uid)
+    if (u) setUser(u)
+  }
+
+  useEffect(() => onAuthChange(async fbU => {
+    setFbUser(fbU)
+    if (fbU) {
+      const u = await getUserProfile(fbU.uid)
+      setUser(u)
+    } else {
+      setUser(null)
+    }
+    setLoading(false)
+  }), [])
+
+  useEffect(() => subscribeToMatches(setMatches), [])
+
+  useEffect(() => {
+    if (!user) return
+    return subscribeToConversations(user.uid, setConversations)
+  }, [user?.uid])
+
+  const unreadTotal = conversations.reduce((sum, c) => {
+    const unread = (c as any).unreadCount ?? 0
+    return sum + unread
+  }, 0)
+
+  return (
+    <Ctx.Provider value={{
+      fbUser, user, loading, matches,
+      conversations, unreadTotal, refreshUser,
+    }}>
+      {children}
+    </Ctx.Provider>
+  )
+}
+
+════════════════════════════════════════
+STEP 11｜Firestore Security Rules
+════════════════════════════════════════
+
+在 Firebase Console → Firestore → Rules 完整貼入：
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth()  { return request.auth != null; }
+    function isAdmin() {
+      return isAuth() && request.auth.token.role == 'admin';
+    }
+    function isActive() {
+      return isAuth() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.isActive == true;
+    }
+    function notDeleted() {
+      return resource.data.isDeleted == false;
+    }
+
+    match /users/{uid} {
+      allow read:   if isAuth();
+      allow create: if request.auth.uid == uid;
+      allow update: if (request.auth.uid == uid || isAdmin()) && isActive();
+      allow delete: if isAdmin();
+    }
+
+    match /courts/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    match /pending_courts/{id} {
+      allow read:   if isAuth();
+      allow create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+
+    match /matches/{id} {
+      allow read:   if true;
+      allow create: if isActive();
+      allow update: if isActive() && (
+        resource.data.ownerUid == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /match_applications/{id} {
+      allow read:   if isAuth();
+      allow create: if isActive();
+      allow update: if isActive() && (
+        resource.data.applicantUid == request.auth.uid ||
+        get(/databases/$(database)/documents/matches/$(resource.data.matchId))
+          .data.ownerUid == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /heart_records/{id} {
+      allow read:   if isAuth();
+      allow create: if isActive() &&
+        request.auth.uid == request.resource.data.fromUid;
+      allow update, delete: if false;
+    }
+
+    match /clubs/{id} {
+      allow read:   if notDeleted() || isAdmin();
+      allow create: if isActive();
+      allow update: if isActive() && (
+        resource.data.ownerUid == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /club_members/{id} {
+      allow read:   if isAuth();
+      allow create: if isActive();
+      allow update, delete: if isActive() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /conversations/{convId} {
+      allow read:   if isAuth() &&
+        request.auth.uid in resource.data.participants;
+      allow create: if isAuth();
+      allow update: if isAuth() &&
+        request.auth.uid in resource.data.participants;
+
+      match /messages/{msgId} {
+        allow read, create: if isAuth() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(convId))
+              .data.participants;
+        allow update, delete: if false;
+      }
+    }
+
+    match /coaches/{id} {
+      allow read:   if notDeleted() || isAdmin();
+      allow create: if isActive();
+      allow update: if isActive() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /student_posts/{id} {
+      allow read:   if notDeleted() || isAdmin();
+      allow create: if isActive();
+      allow update, delete: if isActive() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /news/{id} {
+      allow read:  if resource.data.isPublished == true || isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}
+
+════════════════════════════════════════
+STEP 12｜firebase.json（Indexes）
+════════════════════════════════════════
+
+在專案根目錄建立或更新 firestore.indexes.json：
+
+{
+  "indexes": [
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "createdAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "city",        "order": "ASCENDING" },
+        { "fieldPath": "createdAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerUid",    "order": "ASCENDING" },
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "createdAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "match_applications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "matchId",     "order": "ASCENDING" },
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "status",      "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "match_applications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "applicantUid","order": "ASCENDING" },
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "createdAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clubs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted",   "order": "ASCENDING" },
+        { "fieldPath": "city",        "order": "ASCENDING" },
+        { "fieldPath": "createdAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participants","arrayConfig": "CONTAINS" },
+        { "fieldPath": "updatedAt",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "createdAt",   "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
+
+部署：npx firebase deploy --only firestore:indexes
+
+════════════════════════════════════════
+STEP 13｜後台管理頁面（/admin 路由保護）
+════════════════════════════════════════
+
+建立 app/admin/layout.tsx：
+
+'use client'
+import { useApp } from '@/context/AppContext'
+import { redirect } from 'next/navigation'
+import { useEffect } from 'react'
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useApp()
+  
+  useEffect(() => {
+    if (!loading && (!user || user.role !== 'admin')) {
+      redirect('/')
+    }
+  }, [user, loading])
+  
+  if (loading) return <div>載入中...</div>
+  if (!user || user.role !== 'admin') return null
+  return <>{children}</>
+}
+
+建立以下後台頁面（每頁從 Firestore 即時讀取，不用假資料）：
+
+app/admin/page.tsx
+  ← 統計：會員數 / 揪球數（open）/ 社團數 / 待審球場數
+  ← 使用 getDocs + countFromServer
+
+app/admin/users/page.tsx
+  ← 列表（分頁 20 筆）+ 搜尋暱稱/Email
+  ← 每列：暱稱 / Email / NTRP / 加入時間 / 角色 / 狀態
+  ← 操作：停權（isActive=false）/ 復權 / 改角色
+
+app/admin/matches/page.tsx
+  ← 所有揪球（含已取消）
+  ← 可軟刪除不當內容
+
+app/admin/clubs/page.tsx
+  ← 所有社團，可軟刪除
+
+app/admin/courts/page.tsx
+  ← 球場列表，可新增/編輯/軟刪除
+  ← 待審區：pending_courts，可核准（複製到 courts collection）或拒絕
+
+app/admin/coaches/page.tsx
+  ← 教練列表，可切換 isVerified
+
+app/admin/news/page.tsx
+  ← 新聞管理，含新增/編輯/發布切換
+
+════════════════════════════════════════
+STEP 14｜球局詳情頁按鈕邏輯
+app/matches/[id]/page.tsx
+════════════════════════════════════════
+
+import { isWithin24Hours } from '@/lib/timeUtils'
+
+const isOwner     = user?.uid === match.ownerUid
+const within24    = isWithin24Hours(match.date, match.startTime)
+const myApp       = applications.find(a => a.applicantUid === user?.uid && !a.isDeleted)
+const isFull      = match.filledSlots >= match.totalSlots
+const isCancelled = match.isDeleted || match.status === 'cancelled'
+const transferable = applications.filter(
+  a => a.status === 'accepted' && !a.isDeleted && a.applicantUid !== user?.uid
+)
+
+按鈕顯示矩陣（主揪視角）：
+  isOwner && !isCancelled → 顯示「取消活動」
+  isOwner && transferable.length > 0 → 顯示「轉移主辦權」
+  isOwner → 完全不顯示「退出」按鈕
+
+按鈕顯示矩陣（球友視角）：
+  !myApp && !isFull && !isCancelled → 「我要加入」
+  myApp?.status === 'pending'       → 「已申請，等待確認」disabled
+  myApp?.status === 'accepted' && !within24 → 「退出球局」
+  myApp?.status === 'accepted' && within24  →
+    「退出球局」disabled +
+    小字：「距開打不足 24 小時，如需退出請聯繫主揪。」
+  myApp?.status === 'removed'       → 「已被移除」灰色
+  isFull                            → 「球局已額滿」disabled
+  isCancelled                       → 「球局已取消」灰色
+
+主揪參與者列表（每人旁邊）：
+  <button onClick={() => removeFromMatch(...)}>移除</button>
+  不受 24hr 限制，主揪隨時可移除
+
+愛心按鈕（status==='closed' 且是參與者）：
+  myHeart = heartRecords.find(h => h.fromUid===user.uid && h.toUid===member.uid)
+  !myHeart → 顯示「給予肯定 ❤️」
+  myHeart  → 顯示「已給予 ❤️」disabled
+
+════════════════════════════════════════
+STEP 15｜完成後完整測試流程
+════════════════════════════════════════
+
+開啟三個無痕視窗，各登入不同帳號測試：
+
+帳號A（test@jojo.tw / test1234）：
+  1. 發起一場揪球（明天 10:00–12:00，2人）
+  2. 進入 /messages → 看到系統自動建立的球局聊天室
+
+帳號B（beginner@jojo.tw / begin1234）：
+  3. 在揪球頁找到 A 的球局 → 點「我要加入」
+  4. 再點一次「我要加入」→ 應顯示「已申請過此球局」（冪等測試）
+
+帳號A：
+  5. /profile → 訊息 Tab → 看到 B 的申請通知
+  6. 點「接受」
+  7. B 的「還差幾人」數字減少
+  8. 球局聊天室出現「B 已加入」系統訊息
+
+帳號B：
+  9. /messages → 看到「已被接受」的直接訊息
+  10. 進入球局聊天室 → 可發文字訊息
+
+帳號A 和 B 互傳訊息：
+  11. 確認兩方都即時收到（不需刷新頁面）
+
+帳號A 測試取消：
+  12. 按「取消活動」
+  13. B 的訊息欄收到「球局已取消」通知
+  14. 球局列表該筆消失（isDeleted=true）
+
+管理員（admin）：
+  15. 進入 /admin → 看到統計數字
+  16. 停權帳號 B
+  17. B 再次操作任何寫入 → 被 Security Rules 擋下
+  18. 復權帳號 B → 正常使用
+
+Firebase Console 確認：
+  - matches 文件的 isDeleted / filledSlots 正確
+  - conversations/messages subcollection 有即時寫入
+  - heart_records 不可重複（同一 matchId+fromUid+toUid）
+  - 軟刪除球局後，match_applications 也全部 isDeleted=true
+</user_query>

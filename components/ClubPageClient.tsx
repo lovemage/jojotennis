@@ -1,0 +1,45 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import PageHero from "@/components/PageHero";
+import ClubExplorer from "@/components/ClubExplorer";
+import { clubs as seedClubs, type Club } from "@/data/clubs";
+import { subscribeToClubs } from "@/lib/clubService";
+import type { Club as SchemaClub } from "@/lib/schema";
+
+function toUiClub(data: SchemaClub & { clubId: string }): Club {
+  return {
+    id: data.clubId,
+    name: data.name,
+    city: data.city,
+    baseCourt: data.venue,
+    levelRange: data.ntrpLevels?.join("、") || "不限",
+    schedule: data.schedule,
+    memberCount: data.memberCount ?? 0,
+    tags: data.types ?? [],
+    description: data.description,
+  };
+}
+
+export default function ClubPageClient() {
+  const [clubs, setClubs] = useState<Club[]>(seedClubs);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToClubs((liveClubs) => {
+      if (liveClubs.length > 0) {
+        setClubs(liveClubs.map((club) => toUiClub(club)));
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-md px-6 py-10">
+      <PageHero
+        title="社團"
+        description="探索地區社團、固定團練與球隊資訊，找到長期一起打球的夥伴。"
+      />
+      <ClubExplorer clubs={clubs} />
+    </section>
+  );
+}

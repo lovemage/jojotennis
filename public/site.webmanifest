@@ -1,0 +1,10 @@
+{
+  "name": "揪揪網球 JoJo Tennis",
+  "short_name": "揪揪網球",
+  "description": "找球友、找球場、找教練的台灣網球社群平台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F2EB",
+  "theme_color": "#1E3D2F",
+  "lang": "zh-Hant"
+}

@@ -1,6 +1,5 @@
-import ProfileDashboardV2 from "@/components/ProfileDashboardV2";
+import ProfileDashboardContext from "@/components/ProfileDashboardContext";
 import { courts } from "@/data/courts";
-import { matchPosts } from "@/data/matchPosts";
 import { tennisLevels } from "@/data/tennisLevels";
 
 export default function ProfilePage() {
@@ -8,11 +7,7 @@ export default function ProfilePage() {
 
   return (
     <section className="mx-auto max-w-md px-6 py-10">
-      <ProfileDashboardV2
-        cities={cities}
-        tennisLevels={tennisLevels}
-        defaultMatches={matchPosts}
-      />
+      <ProfileDashboardContext cities={cities} tennisLevels={tennisLevels} />
     </section>
   );
 }

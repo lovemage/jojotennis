@@ -1,6 +1,5 @@
 import PageHero from "@/components/PageHero";
 import MatchBoard from "@/components/MatchBoard";
-import { matchPosts } from "@/data/matchPosts";
 
 export default function MatchPage() {
   return (
@@ -10,7 +9,7 @@ export default function MatchPage() {
         description="用等級、地點和可打時間找到合適的球友，讓臨打和固定練球更容易。"
       />
 
-      <MatchBoard posts={matchPosts} />
+      <MatchBoard />
     </section>
   );
 }

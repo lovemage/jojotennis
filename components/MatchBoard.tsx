@@ -1,29 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { taiwanCities } from "@/data/cities";
-import type { MatchPost } from "@/data/matchPosts";
-import { getUser, type JojoUser } from "@/lib/auth";
-import { addMessage } from "@/lib/messageStore";
-import {
-  closeMatch,
-  getMatches,
-  saveMatches,
-  type StoredMatchPost,
-} from "@/lib/matchStore";
+import { useApp, type Match } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 
-type MatchBoardProps = {
-  posts: MatchPost[];
-};
-
-type JoinModalState =
-  | { step: "confirm"; post: StoredMatchPost }
-  | { step: "success"; post: StoredMatchPost }
-  | null;
-
-const profileStorageKey = "tennis-tw-profile";
-const ntrpOptions = ["不限", "1.0–1.5", "2.0–2.5", "3.0–3.5", "4.0–4.5", "5.0以上"];
+const ntrpOptions = ["不限", "1", "2", "3", "4", "5", "6–7"];
 
 function padHour(value: string) {
   const numberValue = Number(value);
@@ -45,27 +28,16 @@ function getWeekday(date: string) {
   ];
 }
 
-function formatDate(date: string) {
-  return date ? `${getWeekday(date)} ${date.replaceAll("-", "/")}` : "日期待確認";
-}
-
 function parsePeople(value: string) {
   return Number.parseInt(value, 10) || 1;
 }
 
-export default function MatchBoard({ posts }: MatchBoardProps) {
+export default function MatchBoard() {
+  const router = useRouter();
+  const { user, matches, addMatch, applyMatch, getOrCreateConversation } = useApp();
   const [activeTab, setActiveTab] = useState<"find" | "create">("find");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [allPosts, setAllPosts] = useState<StoredMatchPost[]>(
-    posts as StoredMatchPost[],
-  );
-  const [nickname, setNickname] = useState("你");
-  const [user, setUser] = useState<JojoUser | null>(null);
-  const [joinModal, setJoinModal] = useState<JoinModalState>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [closingPost, setClosingPost] = useState<StoredMatchPost | null>(null);
-  const [expandedApplications, setExpandedApplications] = useState("");
-  const [applications, setApplications] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState({
     title: "",
     city: "台北市",
@@ -82,36 +54,14 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
     notes: "",
   });
 
-  useEffect(() => {
-    const savedProfile = window.localStorage.getItem(profileStorageKey);
-    const currentUser = getUser();
-
-    setAllPosts(getMatches(posts));
-    setUser(currentUser);
-
-    if (savedProfile) {
-      const profile = JSON.parse(savedProfile) as { nickname?: string };
-      setNickname(profile.nickname || "你");
-    }
-
-    if (currentUser) {
-      setNickname(currentUser.nickname || "你");
-    }
-  }, [posts]);
-
   function requireLogin(action: () => void) {
-    if (!getUser()) {
+    if (!user) {
       setShowLoginPrompt(true);
       return;
     }
 
     action();
   }
-
-  const myPosts = useMemo(
-    () => allPosts.filter((post) => post.host === nickname || applications[post.id]),
-    [allPosts, applications, nickname],
-  );
 
   function updateDraft(field: keyof typeof draft, value: string) {
     setDraft((currentDraft) => ({ ...currentDraft, [field]: value }));
@@ -153,30 +103,30 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
 
   function handleCreatePost(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
 
     const startTime = `${padHour(draft.startHour)}:${padMinute(draft.startMinute)}`;
     const endTime = `${padHour(draft.endHour)}:${padMinute(draft.endMinute)}`;
-    const post: StoredMatchPost = {
-      id: `match-${Date.now()}`,
-      title: draft.title || "新的揪球邀請",
-      city: draft.city,
-      district: draft.district,
-      courtName: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
-      date: formatDate(draft.date),
-      time: `${startTime}–${endTime}`,
-      level: draft.ntrpLevels.includes("不限")
-        ? "不限"
-        : `NTRP ${draft.ntrpLevels.join("、")}`,
-      spotsNeeded: parsePeople(draft.spotsNeeded),
-      format: `總人數 ${draft.totalPlayers}`,
-      status: "open",
-      host: nickname,
-      notes: draft.notes,
-    };
-    const nextPosts = [post, ...allPosts];
+    const selectedDate = draft.date ? draft.date.replaceAll("-", "/") : "";
 
-    setAllPosts(nextPosts);
-    saveMatches(nextPosts);
+    addMatch({
+      title: draft.title || "新的揪球邀請",
+      ownerUid: user.uid,
+      ownerNickname: user.nickname,
+      city: draft.city,
+      district: draft.district || "地區待確認",
+      venue: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
+      date: selectedDate || "日期待確認",
+      weekday: getWeekday(draft.date) || "週期待確認",
+      startTime,
+      endTime,
+      ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
+      totalSlots: parsePeople(draft.totalPlayers),
+      note: draft.notes,
+    });
     setDraft((currentDraft) => ({
       ...currentDraft,
       title: "",
@@ -188,27 +138,36 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
     closeSheet();
   }
 
-  function confirmJoin(post: StoredMatchPost) {
-    setApplications((current) => ({
-      ...current,
-      [post.id]: (current[post.id] ?? 0) + 1,
-    }));
-    addMessage({
-      type: "match_request",
-      from: user?.nickname ?? "你",
-      content: `${user?.nickname ?? "你"} 申請加入你的「${post.title}」`,
-      relatedId: post.id,
-    });
-    setJoinModal({ step: "success", post });
-  }
-
-  function finishClosingRecruitment() {
-    if (!closingPost) {
+  function joinMatch(match: Match) {
+    if (!user) {
+      setShowLoginPrompt(true);
       return;
     }
 
-    setAllPosts(closeMatch(closingPost.id, posts));
-    setClosingPost(null);
+    applyMatch(match.id);
+    const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
+      type: "match",
+      relatedId: match.id,
+      name: `揪球：${match.title}`,
+      ownerUid: match.ownerUid,
+      systemMessage: `你已申請加入「${match.title}」，等待主揪回覆。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`,
+    });
+    router.push(`/messages?conversation=${conversationId}`);
+  }
+
+  function openMatchConversation(match: Match) {
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
+    const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
+      type: "match",
+      relatedId: match.id,
+      name: `揪球：${match.title}`,
+      ownerUid: match.ownerUid,
+    });
+    router.push(`/messages?conversation=${conversationId}`);
   }
 
   return (
@@ -243,22 +202,30 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
       </div>
 
       <div className="mt-6 space-y-3">
-        {allPosts.map((post) => {
-          const isClosed = post.status === "closed" || post.status === "full";
-
+        {matches.map((match) => {
+          const remaining = Math.max(match.totalSlots - match.filledSlots, 0);
+          const isClosed = match.status === "closed" || remaining === 0;
+          const hasApplied =
+            !!user && match.applicants.some((applicant) => applicant.uid === user.uid);
+          const isOwner = user?.uid === match.ownerUid;
           return (
             <article
-              key={post.id}
+              key={match.id}
+              onClick={() => openMatchConversation(match)}
               className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-bold text-pine">{post.title}</h2>
+                  <h2 className="font-bold text-pine">{match.title}</h2>
                   <p className="mt-1 text-sm text-muted">
-                    {post.city}・{post.district || "地區待確認"}
+                    {match.city}・{match.district || "地區待確認"}
                   </p>
                 </div>
-                {isClosed ? (
+                {remaining === 0 ? (
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                    ✅ 招募完成
+                  </span>
+                ) : isClosed ? (
                   <span className="rounded-full bg-muted/20 px-3 py-1 text-xs font-bold text-muted">
                     已結束
                   </span>
@@ -267,17 +234,18 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
               <div className="relative mt-3">
                 <div className={!user ? "blur-sm" : undefined}>
                   <p className="text-sm leading-6 text-muted">
-                    主揪：{post.host}
+                    主揪：{match.ownerNickname}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-muted">
-                    📅 {post.date}　⏰ {post.time}
+                    📅 {match.weekday} {match.date}　⏰ {match.startTime}–{match.endTime}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted">
-                    🎾 {post.level}　👥 還差 {post.spotsNeeded} 人
+                    🎾 NTRP {match.ntrpRequired.join("、")}　👥 {match.filledSlots}/
+                    {match.totalSlots} 人・還差 {remaining} 人
                   </p>
-                  {post.notes ? (
+                  {match.note ? (
                     <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">
-                      {post.notes}
+                      {match.note}
                     </p>
                   ) : null}
                 </div>
@@ -293,110 +261,41 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
                   </div>
                 ) : null}
               </div>
-              <button
-                type="button"
-                disabled={isClosed}
-                onClick={() =>
-                  requireLogin(() => setJoinModal({ step: "confirm", post }))
-                }
-                className={`mt-4 flex h-11 w-full items-center justify-center rounded-lg text-sm font-bold text-white ${
-                  isClosed ? "bg-muted" : "bg-clay"
-                }`}
-              >
-                {isClosed ? "招募已結束" : "我要加入"}
-              </button>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openMatchConversation(match);
+                  }}
+                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                >
+                  開啟聊天室
+                </button>
+                <button
+                  type="button"
+                  disabled={isClosed || hasApplied || isOwner}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    joinMatch(match);
+                  }}
+                  className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
+                    isClosed || hasApplied || isOwner ? "bg-muted" : "bg-clay"
+                  }`}
+                >
+                  {isClosed
+                    ? "招募已結束"
+                    : hasApplied
+                      ? "✅ 已申請"
+                      : isOwner
+                        ? "你是主揪"
+                        : "我要加入"}
+                </button>
+              </div>
             </article>
           );
         })}
       </div>
-
-      <section className="mt-8">
-        <h2 className="text-xl font-bold text-pine">我的約球</h2>
-        <div className="mt-4 space-y-3">
-          {myPosts.map((post) => {
-            const isClosed = post.status === "closed" || post.status === "full";
-
-            return (
-            <article
-              key={`my-${post.id}`}
-              className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-pine">{post.title}</h3>
-                  <p className="mt-1 text-sm text-muted">
-                    {post.date} · {post.time}
-                  </p>
-                </div>
-                {applications[post.id] ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedApplications(
-                        expandedApplications === post.id ? "" : post.id,
-                      )
-                    }
-                    className="rounded-full bg-gold/20 px-3 py-1 text-xs font-bold text-clay"
-                  >
-                    🔔 {applications[post.id]} 人想加入
-                  </button>
-                ) : null}
-              </div>
-
-              {expandedApplications === post.id ? (
-                <div className="mt-4 rounded-2xl bg-ivory p-4">
-                  <p className="text-sm font-semibold text-pine">
-                    球友小林 · 剛剛送出申請
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        addMessage({
-                          type: "match_accepted",
-                          from: nickname,
-                          content: `✅ 你的申請已被接受！${nickname} 接受了你加入「${post.title}」`,
-                          relatedId: post.id,
-                        })
-                      }
-                      className="rounded-full bg-green-600 px-4 py-2 text-sm font-bold text-white"
-                    >
-                      接受
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        addMessage({
-                          type: "match_declined",
-                          from: nickname,
-                          content: `你申請加入「${post.title}」未被接受，歡迎繼續尋找其他約球。`,
-                          relatedId: post.id,
-                        })
-                      }
-                      className="rounded-full border border-pine px-4 py-2 text-sm font-bold text-pine"
-                    >
-                      婉拒
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                disabled={isClosed}
-                onClick={() => setClosingPost(post)}
-                className={`mt-4 rounded-full px-4 py-2 text-sm font-bold ${
-                  isClosed
-                    ? "bg-muted/20 text-muted"
-                    : "border border-pine text-pine"
-                }`}
-              >
-                {isClosed ? "已結束" : "結束招募"}
-              </button>
-            </article>
-            );
-          })}
-        </div>
-      </section>
 
       {isSheetOpen ? (
         <div className="fixed inset-0 z-40 bg-ink/40" onClick={closeSheet}>
@@ -423,7 +322,9 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
               ✕
             </button>
             <h2 className="text-2xl font-bold text-pine">發起揪球邀請</h2>
-            <p className="mt-1 text-sm text-muted">以 {nickname} 的身份發起</p>
+            <p className="mt-1 text-sm text-muted">
+              以 {user?.nickname ?? "你"} 的身份發起
+            </p>
 
             <form onSubmit={handleCreatePost} className="mt-5 space-y-4">
               <label className="block">
@@ -634,85 +535,6 @@ export default function MatchBoard({ posts }: MatchBoardProps) {
         </div>
       ) : null}
 
-      {joinModal ? (
-        <div className="fixed inset-0 z-50 flex items-center bg-ink/50 p-4">
-          <div className="mx-auto w-full max-w-md rounded-[1.5rem] bg-white p-5">
-            {joinModal.step === "confirm" ? (
-              <>
-                <h2 className="text-xl font-bold text-pine">確認加入這場約球？</h2>
-                <div className="mt-4 rounded-2xl bg-ivory p-4 text-sm leading-7 text-muted">
-                  <p>時間：{joinModal.post.date} {joinModal.post.time}</p>
-                  <p>地點：{joinModal.post.courtName}</p>
-                  <p>主揪：{joinModal.post.host}</p>
-                </div>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setJoinModal(null)}
-                    className="rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine"
-                  >
-                    再想想
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => confirmJoin(joinModal.post)}
-                    className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
-                  >
-                    確認加入
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-center text-5xl">✅</p>
-                <h2 className="mt-4 text-center text-xl font-bold text-pine">
-                  已送出加入申請！
-                </h2>
-                <p className="mt-3 text-center text-sm leading-6 text-muted">
-                  已通知主揪，請耐心等待對方回覆。
-                </p>
-                <p className="mt-4 text-xs leading-6 text-red-600">
-                  ⚠️ 安全提醒：請勿在平台外提前付款或轉帳，謹防詐騙。
-                  揪揪網球不對場外行為及媒合結果負責。
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setJoinModal(null)}
-                  className="mt-5 w-full rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
-                >
-                  返回找球友
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      ) : null}
-      {closingPost ? (
-        <div className="fixed inset-0 z-50 flex items-center bg-ink/50 p-4">
-          <div className="mx-auto w-full max-w-md rounded-[1.5rem] bg-white p-5">
-            <h2 className="text-xl font-bold text-pine">確定要結束這場招募嗎？</h2>
-            <p className="mt-3 text-sm leading-6 text-muted">
-              結束後將不再接受新的加入申請。
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setClosingPost(null)}
-                className="rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine"
-              >
-                再想想
-              </button>
-              <button
-                type="button"
-                onClick={finishClosingRecruitment}
-                className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
-              >
-                確定結束
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       <LoginPromptModal
         isOpen={showLoginPrompt}
         onClose={() => setShowLoginPrompt(false)}

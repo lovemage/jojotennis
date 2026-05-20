@@ -1,21 +1,30 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { newsArticles } from "@/data/news";
+import { useParams } from "next/navigation";
+import { useApp } from "@/context/AppContext";
 
-type NewsDetailPageProps = {
-  params: {
-    slug: string;
-  };
-};
-
-export default function NewsDetailPage({ params }: NewsDetailPageProps) {
-  const article = newsArticles.find((item) => item.slug === params.slug);
+export default function NewsDetailPage() {
+  const params = useParams<{ slug: string }>();
+  const { newsArticles } = useApp();
+  const publishedNews = newsArticles.filter((item) => item.isPublished);
+  const article = publishedNews.find((item) => item.slug === params.slug);
 
   if (!article) {
-    notFound();
+    return (
+      <section className="mx-auto max-w-md px-6 py-16 text-center">
+        <h1 className="text-3xl font-bold text-pine">找不到這篇新聞</h1>
+        <Link
+          href="/news"
+          className="mt-6 inline-flex rounded-full bg-clay px-6 py-3 text-sm font-bold text-white"
+        >
+          返回新聞列表
+        </Link>
+      </section>
+    );
   }
 
-  const moreNews = newsArticles
+  const moreNews = publishedNews
     .filter((item) => item.slug !== article.slug && item.isPublished)
     .slice(0, 3);
 

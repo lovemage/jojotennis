@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import PageHero from "@/components/PageHero";
 import NewsList from "@/components/NewsList";
-import { newsArticles } from "@/data/news";
 
 export const metadata: Metadata = {
   title: "網球新聞｜賽事・品牌・新品｜揪揪網球",
@@ -15,7 +14,7 @@ export default function NewsPage() {
         title="網球新聞 & 活動"
         description="賽事快訊・品牌活動・新品上市，掌握台灣與國際網球消息。"
       />
-      <NewsList articles={newsArticles.filter((article) => article.isPublished)} />
+      <NewsList />
     </section>
   );
 }

@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { taiwanCities } from "@/data/cities";
 import type { Club } from "@/data/clubs";
-import { getUser } from "@/lib/auth";
-import { addMessage } from "@/lib/messageStore";
+import { useApp } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 
 type ClubExplorerProps = {
@@ -16,6 +15,7 @@ const ntrpOptions = ["不限", "1", "2", "3", "4", "5", "6–7"];
 const joinedClubsStorageKey = "jojo-tennis-joined-clubs";
 
 export default function ClubExplorer({ clubs }: ClubExplorerProps) {
+  const { user, sendMessage, getOrCreateConversation } = useApp();
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -44,7 +44,7 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
   );
 
   function requireLogin(action: () => void) {
-    if (!getUser()) {
+    if (!user) {
       setShowLoginPrompt(true);
       return;
     }
@@ -85,7 +85,6 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
 
   function joinClub(club: Club) {
     requireLogin(() => {
-      const currentUser = getUser();
       const nextJoinedIds = joinedClubIds.includes(club.id)
         ? joinedClubIds
         : [...joinedClubIds, club.id];
@@ -108,11 +107,21 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
         joinedClubsStorageKey,
         JSON.stringify(nextSavedClubs),
       );
-      addMessage({
+      sendMessage({
         type: "club_join",
-        from: currentUser?.nickname ?? "你",
-        content: `${currentUser?.nickname ?? "你"} 申請加入你的「${club.name}」`,
+        fromUid: user?.uid ?? "system",
+        fromNickname: user?.nickname ?? "你",
+        toUid: "system",
+        content: `${user?.nickname ?? "你"} 申請加入你的「${club.name}」`,
         relatedId: club.id,
+      });
+      getOrCreateConversation("system", club.name, {
+        type: "club",
+        relatedId: club.id,
+        name: club.name,
+        ownerUid: "system",
+        participants: [user?.uid ?? ""],
+        systemMessage: `你已加入「${club.name}」社團聊天室，可以在這裡和成員討論練球與活動。`,
       });
     });
   }
@@ -285,10 +294,13 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
                   ))}
                 </div>
               </div>
-              <input
-                placeholder="例：大安森林公園網球場"
-                className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
-              />
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">常用球場</span>
+                <input
+                  placeholder="例：大安森林公園網球場、青年公園網球場"
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+                />
+              </label>
               <input
                 placeholder="例：週二、週四 19:00"
                 className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
@@ -314,7 +326,19 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
               </label>
               <button
                 type="button"
-                onClick={() => setIsSheetOpen(false)}
+                onClick={() => {
+                  if (user) {
+                    getOrCreateConversation(user.uid, "新社團", {
+                      type: "club",
+                      relatedId: `club-${Date.now()}`,
+                      name: "新建立的社團",
+                      ownerUid: user.uid,
+                      participants: [user.uid],
+                      systemMessage: "📢 社團聊天室已建立，社長可以輸入「公告：」發布公告。",
+                    });
+                  }
+                  setIsSheetOpen(false);
+                }}
                 className="w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
               >
                 建立社團

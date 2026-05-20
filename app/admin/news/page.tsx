@@ -1,9 +1,15 @@
+"use client";
+
 import Link from "next/link";
-import { newsArticles } from "@/data/news";
+import AdminGuard from "@/components/AdminGuard";
+import { useApp } from "@/context/AppContext";
 
 export default function AdminNewsPage() {
+  const { newsArticles, deleteNewsArticle, saveNewsArticle } = useApp();
+
   return (
-    <section className="mx-auto max-w-md px-6 py-10">
+    <AdminGuard>
+      <section className="mx-auto max-w-md px-6 py-10">
       <div className="rounded-[2rem] bg-pine p-6 text-white shadow-lg">
         <p className="text-sm font-semibold text-gold">Admin</p>
         <h1 className="mt-2 text-3xl font-bold">新聞管理</h1>
@@ -41,6 +47,20 @@ export default function AdminNewsPage() {
             </div>
             <button
               type="button"
+              onClick={() =>
+                void saveNewsArticle({ ...article, isPublished: !article.isPublished })
+              }
+              className="mt-4 rounded-full bg-ivory px-4 py-2 text-xs font-bold text-pine"
+            >
+              {article.isPublished ? "下架" : "發布"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`確定刪除「${article.title}」？`)) {
+                  deleteNewsArticle(article.id);
+                }
+              }}
               className="mt-4 rounded-full bg-ivory px-4 py-2 text-xs font-bold text-clay"
             >
               刪除
@@ -48,6 +68,7 @@ export default function AdminNewsPage() {
           </article>
         ))}
       </div>
-    </section>
+      </section>
+    </AdminGuard>
   );
 }

@@ -1,99 +1,159 @@
-import PageHero from "@/components/PageHero";
-import { clubs } from "@/data/clubs";
-import { courts } from "@/data/courts";
-import { matchPosts } from "@/data/matchPosts";
-import { newsArticles } from "@/data/news";
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import AdminGuard from "@/components/AdminGuard";
+import { useApp } from "@/context/AppContext";
+import { fetchAdminDashboardCounts, type AdminDashboardCounts } from "@/lib/adminService";
+
+const USE_FIREBASE = process.env.NEXT_PUBLIC_USE_FIREBASE === "true";
 
 export default function AdminPage() {
-  const bookableCourts = courts.filter(
-    (court) => court.bookingStatus === "bookable",
-  ).length;
+  const { addAdminUser } = useApp();
+  const [adminEmail, setAdminEmail] = useState("");
+  const [counts, setCounts] = useState<AdminDashboardCounts | null>(null);
+  const [loading, setLoading] = useState(USE_FIREBASE);
+
+  useEffect(() => {
+    if (!USE_FIREBASE) {
+      setLoading(false);
+      return;
+    }
+    void fetchAdminDashboardCounts()
+      .then(setCounts)
+      .finally(() => setLoading(false));
+  }, []);
+
   const adminStats = [
-    { label: "會員數", value: "0" },
-    { label: "約球數", value: matchPosts.length.toString() },
-    { label: "社團數", value: clubs.length.toString() },
-    { label: "新聞數", value: newsArticles.length.toString() },
-    { label: "球場資料", value: courts.length.toString() },
-    { label: "可預訂球場", value: bookableCourts.toString() },
+    { label: "會員數", value: counts?.users ?? "—" },
+    { label: "開放揪球", value: counts?.openMatches ?? "—" },
+    { label: "社團數", value: counts?.clubs ?? "—" },
+    { label: "待審球場", value: counts?.pendingCourts ?? "—" },
+    { label: "新聞數", value: counts?.news ?? "—" },
+    { label: "教練數", value: counts?.coaches ?? "—" },
+    { label: "學員需求", value: counts?.studentPosts ?? "—" },
   ];
+
   const modules = [
-    ["/admin/courts", "球場管理"],
     ["/admin/users", "會員管理"],
     ["/admin/matches", "約球管理"],
     ["/admin/clubs", "社團管理"],
-    ["/admin/pending", "待審核球場"],
+    ["/admin/courts", "球場管理"],
+    ["/admin/pending", "球場回報審核"],
     ["/admin/coaches", "教練管理"],
     ["/admin/news", "新聞管理"],
+    ["/admin/messages", "訊息管理"],
+    ["/admin/test", "E2E 測試清單"],
   ];
-  const nextTasks = [
-    "接 Firebase Auth：登入後才能建立約球與社團",
-    "接 Firestore：把球場、約球、社團從靜態資料改成資料庫",
-    "建立資料審核狀態：待確認、已驗證、需更新",
-    "補管理操作：新增、編輯、下架球場資料",
-  ];
+
+  function grantAdmin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    addAdminUser(adminEmail);
+    setAdminEmail("");
+  }
 
   return (
-    <section className="mx-auto max-w-md px-6 py-10">
-      <PageHero
-        eyebrow="Admin"
-        title="管理後台"
-        description="後續可在這裡管理球場資料、社團內容與使用者回報。"
-      />
+    <AdminGuard>
+      <section className="mx-auto max-w-md px-6 py-10">
+        <div className="rounded-[2rem] bg-pine p-6 text-white shadow-lg">
+          <p className="text-sm font-semibold text-gold">管理者</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight">管理後台</h1>
+          <p className="mt-4 leading-7 text-parchment">
+            即時統計與內容管理，資料來自 Firestore。
+          </p>
+        </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        {adminStats.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-2xl bg-white p-4 ring-1 ring-parchment"
-          >
-            <p className="text-2xl font-bold text-pine">{stat.value}</p>
-            <p className="mt-1 text-xs font-medium text-muted">{stat.label}</p>
+        {loading ? (
+          <p className="mt-6 text-center text-sm text-muted">載入統計中…</p>
+        ) : (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {adminStats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl bg-white p-4 ring-1 ring-parchment">
+                <p className="text-2xl font-bold text-pine">{stat.value}</p>
+                <p className="mt-1 text-xs font-medium text-muted">{stat.label}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
 
-      <div className="mt-6 rounded-[1.5rem] bg-clay p-5 text-white">
-        <p className="text-sm font-semibold text-gold">目前狀態</p>
-        <p className="mt-2 leading-7 text-ivory">
-          目前是可展示的前端資料版，資料已結構化，下一階段可接 Firebase
-          Auth Custom Claims role: admin 與 Firestore。
-        </p>
-      </div>
-
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        {modules.map(([href, label]) => (
-          <a
-            key={href}
-            href={href}
-            className="rounded-2xl bg-white p-4 text-sm font-bold text-pine ring-1 ring-parchment"
-          >
-            {label}
-          </a>
-        ))}
-      </div>
-
-      <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-clay">下一批後台任務</p>
-        <div className="mt-4 space-y-3">
-          {nextTasks.map((task) => (
-            <div
-              key={task}
-              className="rounded-2xl bg-ivory p-4 text-sm font-medium leading-6 text-pine ring-1 ring-parchment"
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          {modules.map(([href, label]) => (
+            <Link
+              key={href}
+              href={href}
+              className="rounded-2xl bg-white p-4 text-sm font-bold text-pine ring-1 ring-parchment"
             >
-              {task}
-            </div>
+              {label}
+            </Link>
           ))}
         </div>
-      </div>
 
-      <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-clay">資料健康度</p>
-        <div className="mt-4 space-y-3 text-sm leading-6 text-muted">
-          <p>球場資料已匯入 Excel 原始欄位，包含費用、照明、預約方式。</p>
-          <p>網路補查來源已獨立放在 `bookingSources`，避免混入未驗證資料。</p>
-          <p>約球與社團目前是種子資料，可作為 Firestore schema 雛形。</p>
+        <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-clay">管理者授權</p>
+          <form onSubmit={grantAdmin} className="mt-4 space-y-3">
+            <input
+              type="email"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              placeholder="輸入要授權的 Email"
+              className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+            />
+            <button
+              type="submit"
+              className="w-full rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
+            >
+              新增管理者
+            </button>
+          </form>
         </div>
-      </div>
-    </section>
+
+        <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-clay">種子資料</p>
+          <p className="mt-2 text-sm text-muted">
+            若 Firestore 的 courts / clubs / coaches 皆為空，可一鍵匯入 `data/` 種子資料。
+          </p>
+          <SeedButton />
+        </div>
+      </section>
+    </AdminGuard>
+  );
+}
+
+function SeedButton() {
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function runSeed() {
+    setBusy(true);
+    setStatus("");
+    try {
+      const { seedFirestoreIfEmpty } = await import("@/lib/seedService");
+      const result = await seedFirestoreIfEmpty();
+      setStatus(
+        result.skipped
+          ? "已有資料，略過匯入。"
+          : `已匯入 ${result.courts} 球場、${result.clubs} 社團、${result.coaches} 教練。`,
+      );
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "匯入失敗");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!USE_FIREBASE) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void runSeed()}
+        className="mt-4 w-full rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine disabled:opacity-50"
+      >
+        {busy ? "匯入中…" : "匯入種子資料"}
+      </button>
+      {status ? <p className="mt-3 text-sm text-muted">{status}</p> : null}
+    </>
   );
 }

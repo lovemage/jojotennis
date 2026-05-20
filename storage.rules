@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    match /news/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuth() && request.auth.uid == userId;
+    }
+
+    match /coaches/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
+    match /courts/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+  }
+}

@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { getUser } from "@/lib/auth";
+import { usePathname, useRouter } from "next/navigation";
+import { useApp } from "@/context/AppContext";
 
 const navItems = [
   { href: "/", icon: "🏠", label: "首頁" },
@@ -16,22 +14,8 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  useEffect(() => {
-    function syncAuth() {
-      setIsLoggedIn(Boolean(getUser()));
-    }
-
-    syncAuth();
-    window.addEventListener("storage", syncAuth);
-    window.addEventListener("jojo-auth-change", syncAuth);
-
-    return () => {
-      window.removeEventListener("storage", syncAuth);
-      window.removeEventListener("jojo-auth-change", syncAuth);
-    };
-  }, []);
+  const router = useRouter();
+  const { user } = useApp();
 
   return (
     <nav className="fixed inset-x-0 bottom-0 border-t border-parchment bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
@@ -41,19 +25,26 @@ export default function Navbar() {
       <div className="mx-auto flex max-w-md items-center justify-between gap-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
-          const href = item.href === "/profile" && !isLoggedIn ? "/auth" : item.href;
 
           return (
-            <Link
+            <button
               key={item.href}
-              href={href}
+              type="button"
+              onClick={() => {
+                if (item.href === "/profile" && !user) {
+                  router.push("/auth");
+                  return;
+                }
+
+                router.push(item.href);
+              }}
               className={`flex min-w-0 flex-1 flex-col items-center rounded-2xl px-1.5 py-1.5 text-[11px] font-medium leading-tight transition ${
                 isActive ? "bg-pine text-white" : "text-muted hover:text-pine"
               }`}
             >
               <span className="text-xs leading-none">{item.icon}</span>
               <span className="mt-1 whitespace-nowrap">{item.label}</span>
-            </Link>
+            </button>
           );
         })}
       </div>

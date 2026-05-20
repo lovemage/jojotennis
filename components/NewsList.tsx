@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { NewsArticle, NewsCategory } from "@/data/news";
+import { useApp } from "@/context/AppContext";
 
 type NewsListProps = {
-  articles: NewsArticle[];
+  articles?: NewsArticle[];
 };
 
 const tabs: Array<"全部" | NewsCategory> = [
@@ -16,14 +17,18 @@ const tabs: Array<"全部" | NewsCategory> = [
   "活動",
 ];
 
-export default function NewsList({ articles }: NewsListProps) {
+export default function NewsList({ articles = [] }: NewsListProps) {
+  const { newsArticles } = useApp();
   const [category, setCategory] = useState<(typeof tabs)[number]>("全部");
+  const sourceArticles = (articles.length > 0 ? articles : newsArticles).filter(
+    (article) => article.isPublished,
+  );
   const filteredArticles = useMemo(
     () =>
       category === "全部"
-        ? articles
-        : articles.filter((article) => article.category === category),
-    [articles, category],
+        ? sourceArticles
+        : sourceArticles.filter((article) => article.category === category),
+    [sourceArticles, category],
   );
 
   return (

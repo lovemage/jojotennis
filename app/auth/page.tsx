@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveUser } from "@/lib/auth";
-import { addSessionMockUser, getMockUsers } from "@/lib/mockUsers";
+import { useApp } from "@/context/AppContext";
 
 export default function AuthPage() {
   const router = useRouter();
+  const { login, register, loginWithGoogle } = useApp();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
@@ -14,15 +14,14 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [successName, setSuccessName] = useState("");
   const [error, setError] = useState("");
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [registrationSuccessName, setRegistrationSuccessName] = useState("");
 
-  function redirectHomeLater() {
-    window.setTimeout(() => router.push("/"), 2000);
-  }
-
-  function submitAuth(event: React.FormEvent<HTMLFormElement>) {
+  async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSuccessName("");
+    setRegistrationSuccessName("");
 
     if (!email.includes("@")) {
       setError("請輸入有效的 Email。");
@@ -35,18 +34,15 @@ export default function AuthPage() {
     }
 
     if (tab === "login") {
-      const user = getMockUsers().find(
-        (mockUser) => mockUser.email === email && mockUser.password === password,
-      );
+      const success = await login(email, password);
 
-      if (!user) {
+      if (!success) {
         setError("Email 或密碼錯誤，請確認後再試。");
         return;
       }
 
-      saveUser({ email: user.email, nickname: user.nickname });
-      setSuccessName(`✅ 登入成功！歡迎回來，${user.nickname}`);
-      redirectHomeLater();
+      setSuccessName("✅ 歡迎回來！");
+      router.push("/");
       return;
     }
 
@@ -65,22 +61,26 @@ export default function AuthPage() {
       return;
     }
 
-    addSessionMockUser({ email, password, nickname });
-    saveUser({ email, nickname });
+    const success = await register({ email, password, nickname });
+
+    if (!success) {
+      setError("此 Email 已經註冊，請改用登入。");
+      return;
+    }
+
     setSuccessName(`✅ 註冊成功！歡迎加入揪揪網球，${nickname}！`);
-    redirectHomeLater();
+    setRegistrationSuccessName(nickname);
   }
 
-  function googleAuth() {
-    const displayName = nickname || "你";
+  async function openGoogleNotice() {
+    const success = await loginWithGoogle();
 
-    saveUser({ email: "google-user@jojo.tw", nickname: displayName });
-    setSuccessName(
-      tab === "login"
-        ? `✅ 登入成功！歡迎回來，${displayName}`
-        : `✅ 註冊成功！歡迎加入揪揪網球，${displayName}！`,
-    );
-    redirectHomeLater();
+    if (success) {
+      router.push("/");
+      return;
+    }
+
+    setShowGoogleModal(true);
   }
 
   return (
@@ -92,6 +92,28 @@ export default function AuthPage() {
           找球友・找球場・找教練，從這裡開始
         </p>
       </div>
+
+      {registrationSuccessName ? (
+        <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-6 text-center shadow-sm">
+          <p className="text-5xl">✅</p>
+          <h2 className="mt-4 text-2xl font-bold text-pine">帳號建立成功！</h2>
+          <p className="mt-4 whitespace-pre-line text-sm leading-7 text-muted">
+            {`你已成功加入揪揪網球。
+
+📧 Email 驗證功能即將推出
+正式版本將寄送驗證信至你的信箱，
+確保帳號安全。目前測試版本可直接使用所有功能。`}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="mt-5 w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
+          >
+            開始使用 →
+          </button>
+        </div>
+      ) : (
+        <>
 
       <div className="mt-6 grid grid-cols-2 gap-3">
         <button
@@ -175,10 +197,10 @@ export default function AuthPage() {
 
         <button
           type="button"
-          onClick={googleAuth}
+          onClick={openGoogleNotice}
           className="w-full rounded-full border border-parchment bg-white px-5 py-3 text-sm font-bold text-pine"
         >
-          G {tab === "login" ? "使用 Google 登入" : "使用 Google 快速註冊"}
+          {tab === "login" ? "使用 Google 登入" : "使用 Google 快速註冊"}
         </button>
 
         <p className="text-center text-sm text-muted">
@@ -198,6 +220,26 @@ export default function AuthPage() {
           </p>
         ) : null}
       </form>
+        </>
+      )}
+
+      {showGoogleModal ? (
+        <div className="fixed inset-0 z-50 flex items-center bg-ink/50 p-4">
+          <div className="mx-auto w-full max-w-md rounded-[1.5rem] bg-white p-5 shadow-lg">
+            <h2 className="text-xl font-bold text-pine">Google 登入暫時無法使用</h2>
+            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-muted">
+              {`目前 Google 登入連線失敗，請稍後再試，或先使用 Email 與密碼登入。`}
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowGoogleModal(false)}
+              className="mt-5 w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
+            >
+              我知道了
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
