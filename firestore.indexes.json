@@ -64,11 +64,6 @@
       ]
     },
     {
-      "collectionGroup": "messages",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "createdAt", "order": "ASCENDING" }]
-    },
-    {
       "collectionGroup": "courts",
       "queryScope": "COLLECTION",
       "fields": [
