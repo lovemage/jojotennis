@@ -40,98 +40,168 @@ type CoreListenerSetters = {
   setAdminEmails: (v: string[]) => void;
 };
 
+function noopUnsub() {
+  return () => {};
+}
+
+function safeSnapshot<T>(
+  subscribe: (onNext: (value: T) => void, onError: (err: Error) => void) => () => void,
+  onNext: (value: T) => void,
+  fallback: T,
+): () => void {
+  return subscribe(onNext, () => onNext(fallback));
+}
+
 /** Firestore 核心集合即時監聽（matches / users / news / pending_courts 等） */
-export function useFirebaseCoreListeners(enabled: boolean, setters: CoreListenerSetters) {
+export function useFirebaseCoreListeners(
+  enabled: boolean,
+  userUid: string | undefined,
+  setters: CoreListenerSetters,
+) {
   useEffect(() => {
     if (!enabled) return;
 
-    const unsubMatches = onSnapshot(
-      query(collection(db, "matches"), where("isDeleted", "==", false), orderBy("createdAt", "desc")),
-      (snap) => {
-        setters.setRawSchemaMatches(
-          snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string }),
-        );
-      },
+    const unsubMatches = safeSnapshot(
+      (onNext, onError) =>
+        onSnapshot(
+          query(collection(db, "matches"), where("isDeleted", "==", false), orderBy("createdAt", "desc")),
+          (snap) => {
+            onNext(
+              snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string }),
+            );
+          },
+          onError,
+        ),
+      setters.setRawSchemaMatches,
+      [] as (SchemaMatch & { matchId?: string })[],
     );
 
-    const unsubApps = onSnapshot(
-      query(collection(db, "match_applications"), where("isDeleted", "==", false)),
-      (snap) => {
-        setters.setApplications(
-          snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication),
-        );
-      },
-    );
+    const unsubApps = userUid
+      ? safeSnapshot(
+          (onNext, onError) =>
+            onSnapshot(
+              query(collection(db, "match_applications"), where("isDeleted", "==", false)),
+              (snap) => {
+                onNext(
+                  snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication),
+                );
+              },
+              onError,
+            ),
+          setters.setApplications,
+          [] as MatchApplication[],
+        )
+      : noopUnsub();
 
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      setters.setUsers(
-        snap.docs.map((d) => toUiUser(d.id, (d.data() as SchemaUser).email, d.data() as SchemaUser)),
-      );
-    });
+    const unsubUsers = userUid
+      ? safeSnapshot(
+          (onNext, onError) =>
+            onSnapshot(collection(db, "users"), (snap) => {
+              onNext(
+                snap.docs.map((d) =>
+                  toUiUser(d.id, (d.data() as SchemaUser).email, d.data() as SchemaUser),
+                ),
+              );
+            }, onError),
+          setters.setUsers,
+          [] as User[],
+        )
+      : noopUnsub();
 
     const unsubNews = subscribeToNews((items) => {
       setters.setNewsArticles(items.length > 0 ? items : seedNewsArticles);
     });
 
-    const unsubStudent = onSnapshot(
-      query(collection(db, "student_posts"), where("isDeleted", "==", false), orderBy("createdAt", "desc")),
-      (snap) => {
-        setters.setStudentNeeds(
-          snap.docs.map((d) => {
-            const data = d.data() as Record<string, unknown>;
-            return {
-              id: d.id,
-              ownerUid: String(data.uid ?? ""),
-              ownerNickname: String(data.nickname ?? "學員"),
-              title: String(data.title ?? "學員找教練"),
-              city: String(data.city ?? ""),
-              district: String(data.district ?? ""),
-              targetLevel: String(data.targetNtrp ?? data.targetLevel ?? ""),
-              preferredTime: Array.isArray(data.preferTimes)
-                ? (data.preferTimes as string[]).join("、")
-                : String(data.preferredTime ?? ""),
-              budget: String(data.budget ?? ""),
-              intro: String(data.description ?? data.intro ?? ""),
-              createdAt: toMillis(data.createdAt),
-              status: data.status === "closed" ? "closed" : "active",
-            } satisfies StudentNeedRecord;
-          }),
-        );
-      },
-    );
+    const unsubStudent = userUid
+      ? safeSnapshot(
+          (onNext, onError) =>
+            onSnapshot(
+              query(
+                collection(db, "student_posts"),
+                where("isDeleted", "==", false),
+                orderBy("createdAt", "desc"),
+              ),
+              (snap) => {
+                onNext(
+                  snap.docs.map((d) => {
+                    const data = d.data() as Record<string, unknown>;
+                    return {
+                      id: d.id,
+                      ownerUid: String(data.uid ?? ""),
+                      ownerNickname: String(data.nickname ?? "學員"),
+                      title: String(data.title ?? "學員找教練"),
+                      city: String(data.city ?? ""),
+                      district: String(data.district ?? ""),
+                      targetLevel: String(data.targetNtrp ?? data.targetLevel ?? ""),
+                      preferredTime: Array.isArray(data.preferTimes)
+                        ? (data.preferTimes as string[]).join("、")
+                        : String(data.preferredTime ?? ""),
+                      budget: String(data.budget ?? ""),
+                      intro: String(data.description ?? data.intro ?? ""),
+                      createdAt: toMillis(data.createdAt),
+                      status: data.status === "closed" ? "closed" : "active",
+                    } satisfies StudentNeedRecord;
+                  }),
+                );
+              },
+              onError,
+            ),
+          setters.setStudentNeeds,
+          [] as StudentNeedRecord[],
+        )
+      : noopUnsub();
 
-    const unsubCourts = onSnapshot(
-      query(collection(db, "pending_courts"), orderBy("createdAt", "desc")),
-      (snap) => {
-        setters.setCourtReports(
-          snap.docs.map((d) => {
-            const data = d.data() as Record<string, unknown>;
-            return {
-              id: d.id,
-              reporterUid: String(data.reportedByUid ?? ""),
-              reporterNickname: String(data.reportedByName ?? "會員"),
-              name: String(data.name ?? ""),
-              city: String(data.city ?? ""),
-              district: String(data.district ?? ""),
-              address: String(data.address ?? ""),
-              courtCount: String(data.courtCount ?? ""),
-              bookingMethod: String(data.bookingMethod ?? ""),
-              note: String(data.description ?? data.note ?? ""),
-              status: (data.status as CourtReport["status"]) ?? "pending",
-              createdAt: toMillis(data.createdAt),
-              reviewedAt: data.reviewedAt ? toMillis(data.reviewedAt) : undefined,
-            } satisfies CourtReport;
-          }),
-        );
-      },
-    );
+    const unsubCourts = userUid
+      ? safeSnapshot(
+          (onNext, onError) =>
+            onSnapshot(
+              query(collection(db, "pending_courts"), orderBy("createdAt", "desc")),
+              (snap) => {
+                onNext(
+                  snap.docs.map((d) => {
+                    const data = d.data() as Record<string, unknown>;
+                    return {
+                      id: d.id,
+                      reporterUid: String(data.reportedByUid ?? ""),
+                      reporterNickname: String(data.reportedByName ?? "會員"),
+                      name: String(data.name ?? ""),
+                      city: String(data.city ?? ""),
+                      district: String(data.district ?? ""),
+                      address: String(data.address ?? ""),
+                      courtCount: String(data.courtCount ?? ""),
+                      bookingMethod: String(data.bookingMethod ?? ""),
+                      note: String(data.description ?? data.note ?? ""),
+                      status: (data.status as CourtReport["status"]) ?? "pending",
+                      createdAt: toMillis(data.createdAt),
+                      reviewedAt: data.reviewedAt ? toMillis(data.reviewedAt) : undefined,
+                    } satisfies CourtReport;
+                  }),
+                );
+              },
+              onError,
+            ),
+          setters.setCourtReports,
+          [] as CourtReport[],
+        )
+      : noopUnsub();
 
-    const unsubAdmins = onSnapshot(collection(db, "adminUsers"), (snap) => {
-      const emails = snap.docs
-        .map((d) => String((d.data() as { email?: string }).email ?? d.id))
-        .filter(Boolean);
-      setters.setAdminEmails(Array.from(new Set([...SUPER_ADMIN_EMAILS, ...emails])));
-    });
+    const unsubAdmins = userUid
+      ? safeSnapshot(
+          (onNext, onError) =>
+            onSnapshot(collection(db, "adminUsers"), (snap) => {
+              const emails = snap.docs
+                .map((d) => String((d.data() as { email?: string }).email ?? d.id))
+                .filter(Boolean);
+              onNext(Array.from(new Set([...SUPER_ADMIN_EMAILS, ...emails])));
+            }, onError),
+          setters.setAdminEmails,
+          [...SUPER_ADMIN_EMAILS],
+        )
+      : noopUnsub();
+
+    if (!userUid) {
+      setters.setAdminEmails([...SUPER_ADMIN_EMAILS]);
+    }
 
     return () => {
       unsubMatches();
@@ -143,7 +213,7 @@ export function useFirebaseCoreListeners(enabled: boolean, setters: CoreListener
       unsubAdmins();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Firestore setState 穩定
-  }, [enabled]);
+  }, [enabled, userUid]);
 }
 
 /** 使用者 inbox（legacy messages 集合） */
@@ -155,29 +225,34 @@ export function useFirebaseInboxListener(
   useEffect(() => {
     if (!enabled || !userUid) return;
 
-    return onSnapshot(query(collection(db, "messages"), where("toUid", "==", userUid)), (snap) => {
-      setMessages(
-        snap.docs
-          .map((d) => {
-            const data = d.data() as Record<string, unknown>;
-            return {
-              id: d.id,
-              type: (data.type as Message["type"]) ?? "system",
-              fromUid: String(data.fromUid ?? "system"),
-              fromNickname: String(data.fromNickname ?? "揪揪網球"),
-              toUid: String(data.toUid ?? userUid),
-              content: String(data.content ?? ""),
-              timestamp: toMillis(data.timestamp ?? data.createdAt),
-              isRead: Boolean(data.isRead),
-              relatedId: data.relatedId ? String(data.relatedId) : undefined,
-              isHandled: Boolean(data.isHandled),
-              handledStatus: data.handledStatus as Message["handledStatus"],
-              handledAt: data.handledAt ? toMillis(data.handledAt) : undefined,
-            } satisfies Message;
-          })
-          .sort((a, b) => b.timestamp - a.timestamp),
-      );
-    });
+    return safeSnapshot(
+      (onNext, onError) =>
+        onSnapshot(query(collection(db, "messages"), where("toUid", "==", userUid)), (snap) => {
+          onNext(
+            snap.docs
+              .map((d) => {
+                const data = d.data() as Record<string, unknown>;
+                return {
+                  id: d.id,
+                  type: (data.type as Message["type"]) ?? "system",
+                  fromUid: String(data.fromUid ?? "system"),
+                  fromNickname: String(data.fromNickname ?? "揪揪網球"),
+                  toUid: String(data.toUid ?? userUid),
+                  content: String(data.content ?? ""),
+                  timestamp: toMillis(data.timestamp ?? data.createdAt),
+                  isRead: Boolean(data.isRead),
+                  relatedId: data.relatedId ? String(data.relatedId) : undefined,
+                  isHandled: Boolean(data.isHandled),
+                  handledStatus: data.handledStatus as Message["handledStatus"],
+                  handledAt: data.handledAt ? toMillis(data.handledAt) : undefined,
+                } satisfies Message;
+              })
+              .sort((a, b) => b.timestamp - a.timestamp),
+          );
+        }, onError),
+      setMessages,
+      [] as Message[],
+    );
   }, [enabled, userUid, setMessages]);
 }
 
@@ -216,23 +291,34 @@ export function useFirebaseConversationListeners(
     }
 
     let adminUnsub = () => {};
-    if (isAdmin) {
-      adminUnsub = onSnapshot(query(collection(db, "conversations"), orderBy("updatedAt", "desc")), (snap) => {
-        const nextMeta: ConvMeta = {};
-        for (const docSnap of snap.docs) {
-          const data = docSnap.data() as SchemaConversation;
-          nextMeta[docSnap.id] = { ...data, convId: docSnap.id };
-          if (!messageUnsubs.current[docSnap.id]) {
-            messageUnsubs.current[docSnap.id] = subscribeToMessages(docSnap.id, (msgs) => {
-              setConvMessages((prev) => ({
-                ...prev,
-                [docSnap.id]: msgs.map((m) => toChatMessage(m)),
-              }));
-            });
+    if (isAdmin && userUid) {
+      adminUnsub = safeSnapshot(
+        (onNext, onError) =>
+          onSnapshot(query(collection(db, "conversations"), orderBy("updatedAt", "desc")), (snap) => {
+            onNext(
+              snap.docs.map((docSnap) => {
+                const data = docSnap.data() as SchemaConversation;
+                return { id: docSnap.id, data: { ...data, convId: docSnap.id } };
+              }),
+            );
+          }, onError),
+        (rows) => {
+          const nextMeta: ConvMeta = {};
+          for (const row of rows) {
+            nextMeta[row.id] = row.data;
+            if (!messageUnsubs.current[row.id]) {
+              messageUnsubs.current[row.id] = subscribeToMessages(row.id, (msgs) => {
+                setConvMessages((prev) => ({
+                  ...prev,
+                  [row.id]: msgs.map((m) => toChatMessage(m)),
+                }));
+              });
+            }
           }
-        }
-        setConvMeta((prev) => ({ ...prev, ...nextMeta }));
-      });
+          setConvMeta((prev) => ({ ...prev, ...nextMeta }));
+        },
+        [] as { id: string; data: SchemaConversation & { convId: string } }[],
+      );
     }
 
     return () => {

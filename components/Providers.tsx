@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { AppProvider } from "@/context/AppContext";
+import ClientErrorBoundary from "@/components/ClientErrorBoundary";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -19,7 +20,9 @@ export default function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppProvider>{children}</AppProvider>
+      <ClientErrorBoundary>
+        <AppProvider>{children}</AppProvider>
+      </ClientErrorBoundary>
     </QueryClientProvider>
   );
 }

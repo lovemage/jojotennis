@@ -418,7 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Firebase listeners（src/hooks/useFirebaseDataListeners） ───────────────
 
-  useFirebaseCoreListeners(USE_FIREBASE, {
+  useFirebaseCoreListeners(USE_FIREBASE, user?.uid, {
     setRawSchemaMatches,
     setApplications,
     setUsers,

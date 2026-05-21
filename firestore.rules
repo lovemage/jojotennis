@@ -116,5 +116,17 @@ service cloud.firestore {
       allow read:  if resource.data.isPublished == true || isAdmin();
       allow write: if isAdmin();
     }
+
+    match /adminUsers/{email} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+
+    match /messages/{id} {
+      allow read:   if isAuth() && resource.data.toUid == request.auth.uid;
+      allow create: if isAuth();
+      allow update: if isAuth() && resource.data.toUid == request.auth.uid;
+      allow delete: if isAdmin();
+    }
   }
 }

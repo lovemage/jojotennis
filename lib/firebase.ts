@@ -1,7 +1,8 @@
 export {
   auth,
   db,
-  storage,
   googleProvider,
+  getClientStorage,
+  isFirebaseConfigured,
   default,
 } from "../src/lib/firebase";
