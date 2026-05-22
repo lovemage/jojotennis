@@ -59,7 +59,7 @@ export function useFirebaseCoreListeners(
   setters: CoreListenerSetters,
 ) {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !db) return;
 
     const unsubMatches = safeSnapshot(
       (onNext, onError) =>
@@ -223,7 +223,7 @@ export function useFirebaseInboxListener(
   setMessages: (v: Message[]) => void,
 ) {
   useEffect(() => {
-    if (!enabled || !userUid) return;
+    if (!enabled || !userUid || !db) return;
 
     return safeSnapshot(
       (onNext, onError) =>
@@ -266,7 +266,7 @@ export function useFirebaseConversationListeners(
   setConvMessages: (fn: (prev: Record<string, ChatMessage[]>) => Record<string, ChatMessage[]>) => void,
 ) {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !db) return;
 
     let unsubConversations = () => {};
 

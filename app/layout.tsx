@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { AppProvider } from "@/context/AppContext";
 import HeaderStatus from "@/components/HeaderStatus";
-import Providers from "@/components/Providers";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -42,14 +42,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-Hant">
+    <html lang="zh-TW">
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-ivory text-ink antialiased`}
       >
-        <Providers>
+        <AppProvider>
           <HeaderStatus />
           {children}
-        </Providers>
+        </AppProvider>
       </body>
     </html>
   );

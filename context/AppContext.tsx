@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import type { User as FBUser } from "firebase/auth";
-import { newsArticles as seedNewsArticles } from "@/data/news";
 import {
   onAuthChange,
   getUserProfile,
@@ -90,95 +89,6 @@ export type {
   CourtReport,
   NewsArticle,
 };
-
-// ── Mock auth accounts (local mode) ─────────────────────────────────────────
-
-type MockAccount = User & { password: string };
-
-const MOCK_ACCOUNTS: MockAccount[] = [
-  {
-    uid: "u001",
-    email: "test@jojo.tw",
-    password: "test1234",
-    nickname: "Sabrina",
-    ntrp: "3.5",
-    region: "台北市",
-    yearsPlaying: 4,
-    avatarInitial: "S",
-  },
-  {
-    uid: "u002",
-    email: "coach@jojo.tw",
-    password: "coach1234",
-    nickname: "王教練",
-    ntrp: "5.0",
-    region: "台北市",
-    yearsPlaying: 15,
-    avatarInitial: "王",
-  },
-  {
-    uid: "u003",
-    email: "beginner@jojo.tw",
-    password: "begin1234",
-    nickname: "小明",
-    ntrp: "1.5",
-    region: "新北市",
-    yearsPlaying: 1,
-    avatarInitial: "明",
-  },
-];
-
-const INITIAL_MATCHES: Match[] = [
-  {
-    id: "m001",
-    title: "下班後穩定對拉",
-    ownerUid: "u002",
-    ownerNickname: "王教練",
-    city: "台北市",
-    district: "大安區",
-    venue: "大安森林公園網球場",
-    date: "2026/05/20",
-    weekday: "週三",
-    startTime: "19:00",
-    endTime: "21:00",
-    ntrpRequired: ["3"],
-    totalSlots: 4,
-    filledSlots: 2,
-    note: "以多拍穩定和基本發球練習為主，新手友善。",
-    status: "open",
-    applicants: [],
-  },
-  {
-    id: "m002",
-    title: "週末室內場單打",
-    ownerUid: "u003",
-    ownerNickname: "小明",
-    city: "台北市",
-    district: "信義區",
-    venue: "台北室內網球場",
-    date: "2026/05/22",
-    weekday: "週六",
-    startTime: "10:00",
-    endTime: "12:00",
-    ntrpRequired: ["1", "2"],
-    totalSlots: 2,
-    filledSlots: 0,
-    note: "初學互練，歡迎新手。",
-    status: "open",
-    applicants: [],
-  },
-];
-
-function omitPassword(account: MockAccount): User {
-  const { password: _password, ...userData } = account;
-  return userData;
-}
-
-function getStoredAccounts(): MockAccount[] {
-  if (typeof window === "undefined") return MOCK_ACCOUNTS;
-  const extra = JSON.parse(window.localStorage.getItem("jojo_mock_accounts") ?? "[]") as MockAccount[];
-  return [...MOCK_ACCOUNTS, ...extra];
-}
 
 // ── Context ─────────────────────────────────────────────────────────────────
 
@@ -271,9 +181,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [matches, setMatches] = useState<Match[]>(USE_FIREBASE ? [] : INITIAL_MATCHES);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>(USE_FIREBASE ? [] : seedNewsArticles);
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [studentNeeds, setStudentNeeds] = useState<StudentNeedRecord[]>([]);
   const [courtReports, setCourtReports] = useState<CourtReport[]>([]);
   const [adminEmails, setAdminEmails] = useState<string[]>(SUPER_ADMIN_EMAILS);
@@ -294,24 +204,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => (b.lastMessageTime ?? 0) - (a.lastMessageTime ?? 0));
   }, [convMeta, convMessages, user?.uid]);
 
-  const displayConversations = USE_FIREBASE ? mergedConversations : conversations;
+  const displayConversations = mergedConversations;
 
-  const displayMatches = useMemo(() => {
-    if (!USE_FIREBASE) return matches;
-    return rawSchemaMatches.map((m) => toUiMatch(m, m.matchId ?? (m as { id?: string }).id ?? "", applications));
-  }, [matches, rawSchemaMatches, applications]);
+  const displayMatches = useMemo(
+    () =>
+      rawSchemaMatches.map((m) =>
+        toUiMatch(m, m.matchId ?? (m as { id?: string }).id ?? "", applications),
+      ),
+    [rawSchemaMatches, applications],
+  );
 
   useEffect(() => {
-    if (!USE_FIREBASE) return;
     setMatches(displayMatches);
   }, [displayMatches]);
 
-  const unreadCount = useMemo(() => {
-    const chats = displayConversations.reduce((sum, c) => sum + c.unreadCount, 0);
-    if (USE_FIREBASE) return chats;
-    const inbox = messages.filter((m) => m.toUid === user?.uid && !m.isRead).length;
-    return inbox + chats;
-  }, [messages, displayConversations, user?.uid]);
+  const unreadCount = useMemo(
+    () => displayConversations.reduce((sum, c) => sum + c.unreadCount, 0),
+    [displayConversations],
+  );
 
   useEffect(() => {
     useAuthStore.getState().setAuth({
@@ -339,20 +249,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (profile) setUser(toUiUser(fbUser.uid, fbUser.email, profile));
   }, [fbUser]);
 
-  // ── Bootstrap: auth + localStorage ────────────────────────────────────────
+  // ── Firebase Auth ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (USE_FIREBASE) {
-      const unsub = onAuthChange(async (firebaseUser) => {
-        setLoading(true);
-        setFbUser(firebaseUser);
-        if (!firebaseUser) {
-          setUser(null);
-          setMessages([]);
-          setLoading(false);
-          setAuthReady(true);
-          return;
-        }
+    return onAuthChange(async (firebaseUser) => {
+      setFbUser(firebaseUser);
+      if (firebaseUser) {
         try {
           const profile = await getUserProfile(firebaseUser.uid);
           setUser(
@@ -363,62 +265,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {
           setUser(toUiUser(firebaseUser.uid, firebaseUser.email));
         }
-        setLoading(false);
-        setAuthReady(true);
-      });
-      return unsub;
-    }
-
-    const saved = localStorage.getItem("jojo_user");
-    if (saved) {
-      const parsed = JSON.parse(saved) as Partial<User>;
-      if (parsed.uid) setUser(parsed as User);
-    }
-    const savedMsgs = localStorage.getItem("jojo_messages");
-    if (savedMsgs) {
-      setMessages(
-        (JSON.parse(savedMsgs) as Partial<Message>[]).map((message) => ({
-          id: message.id ?? `msg${Date.now()}`,
-          type: message.type ?? "system",
-          fromUid: message.fromUid ?? "system",
-          fromNickname: message.fromNickname ?? "揪揪網球",
-          toUid: message.toUid ?? "system",
-          content: message.content ?? "",
-          timestamp: message.timestamp ?? Date.now(),
-          isRead: message.isRead ?? false,
-          isHandled: message.isHandled ?? false,
-          handledStatus: message.handledStatus,
-          handledAt: message.handledAt,
-          relatedId: message.relatedId,
-        })),
-      );
-    }
-    const savedMatches = localStorage.getItem("jojo_matches");
-    if (savedMatches) {
-      const parsedMatches = JSON.parse(savedMatches) as Match[];
-      if (parsedMatches.length > 0 && "ownerUid" in parsedMatches[0]) {
-        setMatches(parsedMatches);
+      } else {
+        setUser(null);
+        setMessages([]);
       }
-    }
-    const savedConversations = localStorage.getItem("jojo_conversations");
-    if (savedConversations) setConversations(JSON.parse(savedConversations) as Conversation[]);
-    const savedStudentNeeds = localStorage.getItem("jojo_student_needs");
-    if (savedStudentNeeds) setStudentNeeds(JSON.parse(savedStudentNeeds) as StudentNeedRecord[]);
-    const savedCourtReports = localStorage.getItem("jojo_court_reports");
-    if (savedCourtReports) setCourtReports(JSON.parse(savedCourtReports) as CourtReport[]);
-    const savedNews = localStorage.getItem("jojo_news_articles");
-    if (savedNews) setNewsArticles(JSON.parse(savedNews) as NewsArticle[]);
-    const savedAdmins = localStorage.getItem("jojo_admin_emails");
-    if (savedAdmins) {
-      setAdminEmails(Array.from(new Set([...SUPER_ADMIN_EMAILS, ...JSON.parse(savedAdmins)])));
-    }
-    setLoading(false);
-    setAuthReady(true);
+      setLoading(false);
+      setAuthReady(true);
+    });
   }, []);
 
-  // ── Firebase listeners（src/hooks/useFirebaseDataListeners） ───────────────
+  // ── Firestore 即時監聽 ─────────────────────────────────────────────────────
 
-  useFirebaseCoreListeners(USE_FIREBASE, user?.uid, {
+  useFirebaseCoreListeners(true, user?.uid, {
     setRawSchemaMatches,
     setApplications,
     setUsers,
@@ -428,63 +286,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAdminEmails,
   });
 
-  useFirebaseInboxListener(USE_FIREBASE, user?.uid, setMessages);
+  useFirebaseInboxListener(true, user?.uid, setMessages);
 
   useFirebaseConversationListeners(
-    USE_FIREBASE,
+    true,
     user?.uid,
     isAdmin,
     messageUnsubs,
     setConvMeta,
     setConvMessages,
   );
-
-  // ── Persist local state ───────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    if (user) localStorage.setItem("jojo_user", JSON.stringify(user));
-    else localStorage.removeItem("jojo_user");
-  }, [user]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_messages", JSON.stringify(messages));
-  }, [messages]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_matches", JSON.stringify(matches));
-  }, [matches]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_conversations", JSON.stringify(conversations));
-  }, [conversations]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_student_needs", JSON.stringify(studentNeeds));
-  }, [studentNeeds]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_court_reports", JSON.stringify(courtReports));
-  }, [courtReports]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    try {
-      localStorage.setItem("jojo_news_articles", JSON.stringify(newsArticles));
-    } catch {
-      localStorage.removeItem("jojo_news_articles");
-    }
-  }, [newsArticles]);
-
-  useEffect(() => {
-    if (USE_FIREBASE) return;
-    localStorage.setItem("jojo_admin_emails", JSON.stringify(adminEmails));
-  }, [adminEmails]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -494,22 +305,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Auth actions ──────────────────────────────────────────────────────────
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    if (USE_FIREBASE) {
-      try {
-        await loginWithEmail(email, password);
-        return true;
-      } catch {
-        return false;
-      }
+    try {
+      await loginWithEmail(email, password);
+      return true;
+    } catch {
+      return false;
     }
-    const found = getStoredAccounts().find((a) => a.email === email && a.password === password);
-    if (!found) return false;
-    setUser(omitPassword(found));
-    return true;
   }, []);
 
   const loginWithGoogle = useCallback(async (): Promise<boolean> => {
-    if (!USE_FIREBASE) return false;
     try {
       await loginWithGoogleService();
       return true;
@@ -519,40 +323,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    if (USE_FIREBASE) void logoutService();
+    void logoutService();
     setUser(null);
     setFbUser(null);
     syncAuthCookies(null, false);
-    if (!USE_FIREBASE) localStorage.removeItem("jojo_user");
   }, []);
 
   const register = useCallback(
     async (data: Partial<User> & { email: string; password: string }): Promise<boolean> => {
-      if (USE_FIREBASE) {
-        try {
-          await registerWithEmail(data.email, data.password, data.nickname || "新球友");
-          return true;
-        } catch {
-          return false;
-        }
+      try {
+        await registerWithEmail(data.email, data.password, data.nickname || "新球友");
+        return true;
+      } catch {
+        return false;
       }
-      if (getStoredAccounts().some((a) => a.email === data.email)) return false;
-      const newUser: User = {
-        uid: `u${Date.now()}`,
-        email: data.email,
-        nickname: data.nickname || "新球友",
-        ntrp: data.ntrp || "2.0",
-        region: data.region || "台北市",
-        yearsPlaying: data.yearsPlaying || 0,
-        avatarInitial: (data.nickname || "新")[0],
-      };
-      const extra = JSON.parse(localStorage.getItem("jojo_mock_accounts") ?? "[]") as MockAccount[];
-      localStorage.setItem(
-        "jojo_mock_accounts",
-        JSON.stringify([...extra, { ...newUser, password: data.password }]),
-      );
-      setUser(newUser);
-      return true;
     },
     [],
   );
@@ -592,7 +376,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const persistInboxMessage = useCallback((msg: Message) => {
-    if (!USE_FIREBASE) return;
     void saveInboxMessage(msg);
   }, []);
 
@@ -877,7 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyMatch = useCallback(
     (matchId: string) => {
       if (!user) return;
-      const match = (USE_FIREBASE ? displayMatches : matches).find((m) => m.id === matchId);
+      const match = (displayMatches).find((m) => m.id === matchId);
       if (!match || match.status === "closed") return;
       if (match.applicants.some((a) => a.uid === user.uid) || match.ownerUid === user.uid) return;
 
@@ -913,7 +696,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const respondToApplicant = useCallback(
     async (matchId: string, applicantUid: string, accept: boolean) => {
-      const match = (USE_FIREBASE ? displayMatches : matches).find((m) => m.id === matchId);
+      const match = (displayMatches).find((m) => m.id === matchId);
       if (!match) return;
       const applicant = match.applicants.find((a) => a.uid === applicantUid);
       if (!applicant) return;
@@ -1019,7 +802,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const undoApplicantDecision = useCallback(
     (matchId: string, applicantUid: string) => {
-      const match = (USE_FIREBASE ? displayMatches : matches).find((m) => m.id === matchId);
+      const match = (displayMatches).find((m) => m.id === matchId);
       if (!match || match.ownerUid !== user?.uid) return;
 
       const nextMatch: Match = {
@@ -1272,7 +1055,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAdmin,
     users,
     messages,
-    matches: USE_FIREBASE ? displayMatches : matches,
+    matches: displayMatches,
     conversations: displayConversations,
     newsArticles,
     studentNeeds,

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "seed": "node --env-file=.env.local scripts/seedFirestore.mjs",
     "deploy:preview": "netlify deploy --build",
     "deploy:prod": "netlify deploy --build --prod"
   },
@@ -23,6 +24,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "dotenv": "^16.6.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "firebase-tools": "^15.18.0",
