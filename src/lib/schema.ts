@@ -41,6 +41,8 @@ export interface Court extends BaseDocument {
   hasNightLight: boolean;
   phone: string;
   bookingUrl: string;
+  bookingMethod: string;
+  notes: string;
   openHours: string;
   status: "active" | "pending" | "closed";
 }

@@ -62,15 +62,26 @@ export async function createMatch(data: {
   return ref.id;
 }
 
-export function subscribeToMatches(cb: (m: Match[]) => void, city?: string) {
-  const filters: Parameters<typeof query>[1][] = [
-    where("isDeleted", "==", false),
-    where("status", "==", "open"),
-    orderBy("createdAt", "desc"),
-  ];
-  if (city) filters.splice(1, 0, where("city", "==", city));
-  return onSnapshot(query(collection(db, "matches"), ...filters), (snap) =>
-    cb(snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as Match)),
+export function subscribeToMatches(cb: (m: Match[]) => void, cityFilter?: string) {
+  return onSnapshot(
+    collection(db, "matches"),
+    (snap) => {
+      let results = snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as Match);
+      results = results.filter(
+        (m) =>
+          m.isDeleted !== true &&
+          m.status === "open" &&
+          (!cityFilter || m.city === cityFilter),
+      );
+      results.sort((a, b) => {
+        const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+        const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+        return tb - ta;
+      });
+      console.log("揪球資料更新，筆數：", results.length);
+      cb(results);
+    },
+    (err) => console.error("matches 監聽失敗：", err),
   );
 }
 

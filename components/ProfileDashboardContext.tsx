@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, type Match, type Message } from "@/context/AppContext";
 import type { TennisLevel } from "@/data/tennisLevels";
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
+import { toUiMatch } from "@/lib/mappers";
+import type { Club as SchemaClub, Match as SchemaMatch, MatchApplication } from "@/lib/schema";
 
 type ProfileDashboardContextProps = {
   cities: string[];
@@ -61,7 +65,6 @@ export default function ProfileDashboardContext({
   const {
     user,
     messages,
-    matches,
     studentNeeds,
     unreadCount,
     logout,
@@ -74,6 +77,13 @@ export default function ProfileDashboardContext({
   const [expandedMatchId, setExpandedMatchId] = useState("");
   const [expandedMessageId, setExpandedMessageId] = useState("");
   const [joinedClubs, setJoinedClubs] = useState<JoinedClub[]>([]);
+  const [profileMatches, setProfileMatches] = useState<(SchemaMatch & { matchId: string })[]>(
+    [],
+  );
+  const [profileApps, setProfileApps] = useState<MatchApplication[]>([]);
+  const [clubDirectory, setClubDirectory] = useState<Record<string, SchemaClub & { clubId: string }>>(
+    {},
+  );
   const [confirmLeaveClub, setConfirmLeaveClub] = useState<JoinedClub | null>(
     null,
   );
@@ -85,24 +95,110 @@ export default function ProfileDashboardContext({
   }, [activeTab, markAllRead]);
 
   useEffect(() => {
-    setJoinedClubs(
-      JSON.parse(
-        window.localStorage.getItem("jojo-tennis-joined-clubs") ?? "[]",
-      ) as JoinedClub[],
+    if (!user?.uid) return;
+    const unsub = onSnapshot(
+      collection(db, "matches"),
+      (snap) => {
+        const rows = snap.docs
+          .map((d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string })
+          .filter((m) => m.isDeleted !== true);
+        rows.sort((a, b) => {
+          const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+          const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+          return tb - ta;
+        });
+        setProfileMatches(rows);
+      },
+      (err) => console.error("[matches] 監聽失敗：", err.code, err.message),
     );
+    return () => unsub();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(
+      collection(db, "match_applications"),
+      (snap) => {
+        const rows = snap.docs
+          .map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication)
+          .filter((a) => a.applicantUid === user.uid && a.isDeleted !== true);
+        setProfileApps(rows);
+      },
+      (err) => console.error("[match_applications] 監聽失敗：", err.code, err.message),
+    );
+    return () => unsub();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubMembers = onSnapshot(
+      collection(db, "club_members"),
+      (snap) => {
+        const memberships = snap.docs
+          .map((d) => ({ memberId: d.id, ...d.data() }))
+          .filter(
+            (m) =>
+              (m as { uid?: string }).uid === user.uid &&
+              (m as { isActive?: boolean }).isActive !== false,
+          );
+        setJoinedClubs(
+          memberships.map((m) => {
+            const row = m as unknown as {
+              clubId: string;
+              nickname?: string;
+              joinedAt?: { toDate?: () => Date };
+            };
+            const club = clubDirectory[row.clubId];
+            return {
+              id: row.clubId,
+              name: club?.name ?? row.nickname ?? "社團",
+              city: club?.city ?? "",
+              tags: club?.types ?? [],
+              joinedAt: row.joinedAt?.toDate
+                ? row.joinedAt.toDate().toLocaleDateString("zh-TW")
+                : new Date().toLocaleDateString("zh-TW"),
+            };
+          }),
+        );
+      },
+      (err) => console.error("[club_members] 監聽失敗：", err.code, err.message),
+    );
+    return () => unsubMembers();
+  }, [user?.uid, clubDirectory]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "clubs"),
+      (snap) => {
+        const map: Record<string, SchemaClub & { clubId: string }> = {};
+        snap.docs.forEach((d) => {
+          if ((d.data() as SchemaClub).isDeleted !== true) {
+            map[d.id] = { clubId: d.id, ...d.data() } as SchemaClub & { clubId: string };
+          }
+        });
+        setClubDirectory(map);
+      },
+      (err) => console.error("[clubs] 監聽失敗：", err.code, err.message),
+    );
+    return () => unsub();
   }, []);
 
-  const myCreatedMatches = useMemo(
-    () => matches.filter((match) => match.ownerUid === user?.uid),
-    [matches, user?.uid],
-  );
-  const myAppliedMatches = useMemo(
-    () =>
-      matches.filter((match) =>
-        match.applicants.some((applicant) => applicant.uid === user?.uid),
-      ),
-    [matches, user?.uid],
-  );
+  const myCreatedMatches = useMemo(() => {
+    if (!user?.uid) return [];
+    return profileMatches
+      .filter((m) => m.ownerUid === user.uid)
+      .map((m) => toUiMatch(m, m.matchId, profileApps));
+  }, [profileMatches, profileApps, user?.uid]);
+
+  const myAppliedMatches = useMemo(() => {
+    if (!user?.uid) return [];
+    const joinedIds = new Set(
+      profileApps.filter((a) => a.applicantUid === user.uid).map((a) => a.matchId),
+    );
+    return profileMatches
+      .filter((m) => joinedIds.has(m.matchId))
+      .map((m) => toUiMatch(m, m.matchId, profileApps));
+  }, [profileMatches, profileApps, user?.uid]);
   const inboxMessages = useMemo(
     () => messages.filter((message) => message.toUid === user?.uid),
     [messages, user?.uid],

@@ -11,7 +11,6 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { saveCourt } from "./courtService";
-import type { Court as SchemaCourt } from "./schema";
 
 export type AdminDashboardCounts = {
   users: number;
@@ -34,7 +33,7 @@ export async function fetchAdminDashboardCounts(): Promise<AdminDashboardCounts>
     coachesSnap,
     studentSnap,
   ] = await Promise.all([
-    getCountFromServer(collection(db, "users")),
+    getCountFromServer(query(collection(db, "users"), where("isActive", "==", true))),
     getCountFromServer(
       query(collection(db, "matches"), where("isDeleted", "==", false), where("status", "==", "open")),
     ),
@@ -70,8 +69,7 @@ export async function approvePendingCourt(pendingId: string): Promise<string> {
   const isUrl = /^https?:\/\//i.test(bookingMethod.trim());
   const desc = String(data.description ?? data.note ?? "");
 
-  const newCourt: Omit<SchemaCourt, "createdAt" | "updatedAt"> & { courtId: string } = {
-    courtId,
+  await saveCourt(courtId, {
     name: String(data.name ?? "未命名球場"),
     city: String(data.city ?? ""),
     district,
@@ -83,14 +81,12 @@ export async function approvePendingCourt(pendingId: string): Promise<string> {
     totalCourts: Math.max(1, Number.parseInt(String(data.courtCount ?? "1"), 10) || 1),
     hasNightLight: false,
     phone: "",
+    bookingMethod: isUrl ? "" : bookingMethod.trim(),
     bookingUrl: isUrl ? bookingMethod.trim() : "",
-    openHours: isUrl ? desc : [bookingMethod, desc].filter(Boolean).join("；") || "—",
+    notes: desc,
+    openHours: isUrl ? desc : [bookingMethod, desc].filter(Boolean).join("；") || "",
     status: "active",
-    isDeleted: false,
-    deletedAt: null,
-  };
-
-  await saveCourt(newCourt);
+  });
   await updateDoc(ref, {
     status: "approved",
     reviewedAt: serverTimestamp(),

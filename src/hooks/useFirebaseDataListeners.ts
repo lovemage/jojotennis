@@ -64,13 +64,24 @@ export function useFirebaseCoreListeners(
     const unsubMatches = safeSnapshot(
       (onNext, onError) =>
         onSnapshot(
-          query(collection(db, "matches"), where("isDeleted", "==", false), orderBy("createdAt", "desc")),
+          collection(db, "matches"),
           (snap) => {
-            onNext(
-              snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string }),
+            let rows = snap.docs.map(
+              (d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string },
             );
+            rows = rows.filter((m) => m.isDeleted !== true && m.status === "open");
+            rows.sort((a, b) => {
+              const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+              const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+              return tb - ta;
+            });
+            console.log("AppContext matches 更新：", rows.length);
+            onNext(rows);
           },
-          onError,
+          (err) => {
+            console.error("[matches] 監聽失敗：", err.code, err.message);
+            onError(err);
+          },
         ),
       setters.setRawSchemaMatches,
       [] as (SchemaMatch & { matchId?: string })[],
@@ -112,44 +123,44 @@ export function useFirebaseCoreListeners(
       setters.setNewsArticles(items.length > 0 ? items : seedNewsArticles);
     });
 
-    const unsubStudent = userUid
-      ? safeSnapshot(
-          (onNext, onError) =>
-            onSnapshot(
-              query(
-                collection(db, "student_posts"),
-                where("isDeleted", "==", false),
-                orderBy("createdAt", "desc"),
-              ),
-              (snap) => {
-                onNext(
-                  snap.docs.map((d) => {
-                    const data = d.data() as Record<string, unknown>;
-                    return {
-                      id: d.id,
-                      ownerUid: String(data.uid ?? ""),
-                      ownerNickname: String(data.nickname ?? "學員"),
-                      title: String(data.title ?? "學員找教練"),
-                      city: String(data.city ?? ""),
-                      district: String(data.district ?? ""),
-                      targetLevel: String(data.targetNtrp ?? data.targetLevel ?? ""),
-                      preferredTime: Array.isArray(data.preferTimes)
-                        ? (data.preferTimes as string[]).join("、")
-                        : String(data.preferredTime ?? ""),
-                      budget: String(data.budget ?? ""),
-                      intro: String(data.description ?? data.intro ?? ""),
-                      createdAt: toMillis(data.createdAt),
-                      status: data.status === "closed" ? "closed" : "active",
-                    } satisfies StudentNeedRecord;
-                  }),
-                );
-              },
-              onError,
-            ),
-          setters.setStudentNeeds,
-          [] as StudentNeedRecord[],
-        )
-      : noopUnsub();
+    const unsubStudent = safeSnapshot(
+      (onNext, onError) =>
+        onSnapshot(
+          collection(db, "student_posts"),
+          (snap) => {
+            const rows = snap.docs
+              .filter((d) => (d.data() as { isDeleted?: boolean }).isDeleted !== true)
+              .map((d) => {
+              const data = d.data() as Record<string, unknown>;
+              return {
+                id: d.id,
+                ownerUid: String(data.uid ?? ""),
+                ownerNickname: String(data.nickname ?? "學員"),
+                title: String(data.title ?? "學員找教練"),
+                city: String(data.city ?? ""),
+                district: String(data.district ?? ""),
+                targetLevel: String(data.targetNtrp ?? data.targetLevel ?? ""),
+                preferredTime: Array.isArray(data.preferTimes)
+                  ? (data.preferTimes as string[]).join("、")
+                  : String(data.preferredTime ?? ""),
+                budget: String(data.budget ?? ""),
+                intro: String(data.description ?? data.intro ?? ""),
+                createdAt: toMillis(data.createdAt),
+                status: data.status === "closed" ? "closed" : "active",
+              } satisfies StudentNeedRecord;
+              })
+              .sort((a, b) => b.createdAt - a.createdAt);
+            console.log("學生需求更新，筆數：", rows.length);
+            onNext(rows);
+          },
+          (err) => {
+            console.error("[student_posts] 監聽失敗：", err.code, err.message);
+            onError(err);
+          },
+        ),
+      setters.setStudentNeeds,
+      [] as StudentNeedRecord[],
+    );
 
     const unsubCourts = userUid
       ? safeSnapshot(

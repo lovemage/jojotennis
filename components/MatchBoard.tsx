@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { taiwanCities } from "@/data/cities";
 import { useApp, type Match } from "@/context/AppContext";
@@ -35,7 +35,17 @@ function parsePeople(value: string) {
 export default function MatchBoard() {
   const router = useRouter();
   const { user, matches, addMatch, applyMatch, getOrCreateConversation } = useApp();
+  if (typeof window !== "undefined") {
+    console.log("目前 matches：", matches.length);
+  }
+  const [loading, setLoading] = useState(matches.length === 0);
   const [activeTab, setActiveTab] = useState<"find" | "create">("find");
+
+  useEffect(() => {
+    if (matches.length > 0) setLoading(false);
+    const timer = window.setTimeout(() => setLoading(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [matches.length]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [draft, setDraft] = useState({
@@ -202,7 +212,26 @@ export default function MatchBoard() {
       </div>
 
       <div className="mt-6 space-y-3">
-        {matches.map((match) => {
+        {loading ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              minHeight: "200px",
+              color: "#8A7E6E",
+              fontSize: "14px",
+            }}
+          >
+            載入中...
+          </div>
+        ) : matches.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px", color: "#8A7E6E" }}>
+            目前沒有資料
+          </div>
+        ) : null}
+        {!loading
+          ? matches.map((match) => {
           const remaining = Math.max(match.totalSlots - match.filledSlots, 0);
           const isClosed = match.status === "closed" || remaining === 0;
           const hasApplied =
@@ -294,7 +323,8 @@ export default function MatchBoard() {
               </div>
             </article>
           );
-        })}
+          })
+          : null}
       </div>
 
       {isSheetOpen ? (

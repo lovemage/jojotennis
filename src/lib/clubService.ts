@@ -6,7 +6,6 @@ import {
   doc,
   query,
   where,
-  orderBy,
   onSnapshot,
   getDocs,
   serverTimestamp,
@@ -97,16 +96,24 @@ export async function leaveClub(clubId: string, uid: string, nickname: string): 
   void nickname;
 }
 
-export const subscribeToClubs = (cb: (clubs: Club[]) => void, city?: string) => {
-  const filters: Parameters<typeof query>[1][] = [
-    where("isDeleted", "==", false),
-    orderBy("createdAt", "desc"),
-  ];
-  if (city) filters.splice(1, 0, where("city", "==", city));
-  return onSnapshot(query(collection(db, "clubs"), ...filters), (snap) =>
-    cb(snap.docs.map((d) => ({ clubId: d.id, ...d.data() }) as Club)),
+export function subscribeToClubs(cb: (clubs: Club[]) => void, cityFilter?: string) {
+  return onSnapshot(
+    collection(db, "clubs"),
+    (snap) => {
+      let results = snap.docs.map((d) => ({ clubId: d.id, ...d.data() }) as Club);
+      results = results.filter(
+        (c) => c.isDeleted !== true && (!cityFilter || c.city === cityFilter),
+      );
+      results.sort((a, b) => {
+        const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+        const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+        return tb - ta;
+      });
+      cb(results);
+    },
+    (err) => console.error("clubs 監聽失敗：", err),
   );
-};
+}
 
 export async function softDeleteClub(clubId: string): Promise<void> {
   await updateDoc(doc(db, "clubs", clubId), {

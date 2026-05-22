@@ -6,7 +6,16 @@ import AdminGuard from "@/components/AdminGuard";
 import { useApp } from "@/context/AppContext";
 import { subscribeToAllMatches } from "@/lib/matchService";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
 
 type AdminMatchRow = {
@@ -28,6 +37,32 @@ export default function AdminMatchesPage() {
   const { updateMatchStatus, deleteMatch } = useApp();
   const [rawMatches, setRawMatches] = useState<(SchemaMatch & { matchId?: string })[]>([]);
   const [applications, setApplications] = useState<MatchApplication[]>([]);
+  const [fixing, setFixing] = useState(false);
+
+  async function fixMissingFields() {
+    setFixing(true);
+    try {
+      const snap = await getDocs(collection(db, "matches"));
+      let count = 0;
+      for (const d of snap.docs) {
+        const data = d.data();
+        const updates: Record<string, unknown> = {};
+        if (data.isDeleted === undefined) updates.isDeleted = false;
+        if (data.deletedAt === undefined) updates.deletedAt = null;
+        if (data.updatedAt === undefined) updates.updatedAt = serverTimestamp();
+        if (Object.keys(updates).length > 0) {
+          await updateDoc(doc(db, "matches", d.id), updates);
+          count++;
+        }
+      }
+      alert(`修復完成，共 ${count} 筆`);
+    } catch (err) {
+      console.error("修復失敗：", err);
+      alert("修復失敗，請稍後再試");
+    } finally {
+      setFixing(false);
+    }
+  }
 
   useEffect(() => subscribeToAllMatches(setRawMatches), []);
 
@@ -72,6 +107,15 @@ export default function AdminMatchesPage() {
           <h1 className="mt-2 text-3xl font-bold">約球管理</h1>
           <p className="mt-4 leading-7 text-parchment">含已取消/已刪除揪球，可調整狀態或軟刪除。</p>
         </div>
+
+        <button
+          type="button"
+          disabled={fixing}
+          onClick={() => void fixMissingFields()}
+          className="mt-6 w-full rounded-full border border-clay px-4 py-3 text-sm font-bold text-clay disabled:opacity-50"
+        >
+          {fixing ? "修復中…" : "修復舊資料缺少欄位（一次性）"}
+        </button>
 
         <div className="mt-6 space-y-4">
           {matches.map((match) => (

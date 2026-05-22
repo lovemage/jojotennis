@@ -160,8 +160,8 @@ export default function ClubExplorer({ clubs }: ClubExplorerProps) {
                 key={type}
                 type="button"
                 onClick={() => toggleType(type)}
-                className={`rounded-2xl p-4 text-center text-sm font-semibold ring-1 ring-parchment ${
-                  isSelected ? "bg-clay text-white" : "bg-ivory text-pine"
+                className={`rounded-2xl p-4 text-center text-sm font-semibold ${
+                  isSelected ? "bg-clay text-white" : "bg-parchment text-ink"
                 }`}
               >
                 {type}

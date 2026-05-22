@@ -201,7 +201,11 @@ export default function AdminUsersPage() {
                   <button
                     type="button"
                     onClick={() => void toggleActive(member)}
-                    className="rounded-full border border-pine px-4 py-2 text-xs font-bold text-pine"
+                    className={`rounded-full border px-4 py-2 text-xs font-bold ${
+                      draft.isActive !== false
+                        ? "border-red-600 text-red-600"
+                        : "border-green-600 text-green-700"
+                    }`}
                   >
                     {draft.isActive !== false ? "停權" : "復權"}
                   </button>

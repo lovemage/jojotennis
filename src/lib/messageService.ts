@@ -129,6 +129,7 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
   onSnapshot(
     query(collection(db, "conversations", convId, "messages"), orderBy("createdAt", "asc")),
     (snap) => cb(snap.docs.map((d) => ({ msgId: d.id, ...d.data() } as Message))),
+    (err) => console.error("[messages] 監聽失敗：", err.code, err.message),
   );
 
 export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) => void) =>
@@ -139,6 +140,7 @@ export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) =>
       orderBy("updatedAt", "desc"),
     ),
     (snap) => cb(snap.docs.map((d) => ({ convId: d.id, ...d.data() } as Conversation))),
+    (err) => console.error("[conversations] 監聽失敗：", err.code, err.message),
   );
 
 /** 將聊天室中他人訊息標記為已讀 */

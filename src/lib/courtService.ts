@@ -3,9 +3,6 @@ import {
   collection,
   addDoc,
   onSnapshot,
-  query,
-  where,
-  orderBy,
   doc,
   setDoc,
   updateDoc,
@@ -14,7 +11,16 @@ import {
 import type { Court as SchemaCourt } from "./schema";
 import type { Court as UiCourt } from "@/data/courts";
 
+function surfaceLabel(type: SchemaCourt["surfaceType"]): string {
+  if (type === "clay") return "紅土";
+  if (type === "grass") return "草地";
+  return "硬地";
+}
+
 function toUiCourt(id: string, data: SchemaCourt): UiCourt {
+  const ownership =
+    (data as SchemaCourt & { ownership?: string }).ownership?.trim() || "";
+
   return {
     id: data.courtId || id,
     name: data.name,
@@ -22,41 +28,39 @@ function toUiCourt(id: string, data: SchemaCourt): UiCourt {
     district: data.district,
     streetAddress: data.address,
     address: data.address,
-    latitude: data.lat ?? null,
-    longitude: data.lng ?? null,
+    latitude: data.lat ? data.lat : null,
+    longitude: data.lng ? data.lng : null,
     phone: data.phone ?? "",
     weekdayHours: data.openHours ?? "",
     weekendHours: data.openHours ?? "",
     courtCount: data.totalCourts ?? null,
-    surface:
-      data.surfaceType === "clay"
-        ? "紅土"
-        : data.surfaceType === "grass"
-          ? "草地"
-          : "硬地",
+    surface: surfaceLabel(data.surfaceType),
     environment: data.indoor === "indoor" ? "室內" : "室外",
     hasLighting: data.hasNightLight ?? false,
-    ownership: "—",
+    ownership: ownership || "—",
     offPeakRate: null,
     peakRate: null,
-    bookingMethod: data.bookingUrl ? "線上預約" : "電話/現場",
+    bookingMethod: data.bookingMethod ?? "",
     bookingUrl: data.bookingUrl ?? "",
-    bookingStatus: data.bookingUrl ? "bookable" : "unknown",
-    notes: "",
+    bookingStatus: data.bookingUrl?.startsWith("http") ? "bookable" : "unknown",
+    notes: data.notes ?? "",
   };
 }
 
 export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
   return onSnapshot(
-    query(
-      collection(db, "courts"),
-      where("isDeleted", "==", false),
-      orderBy("createdAt", "desc"),
-    ),
+    collection(db, "courts"),
     (snap) => {
-      cb(snap.docs.map((d) => toUiCourt(d.id, { courtId: d.id, ...d.data() } as SchemaCourt)));
+      const data = snap.docs
+        .filter((d) => {
+          const raw = d.data() as SchemaCourt;
+          return raw.isDeleted !== true && raw.status !== "closed";
+        })
+        .map((d) => toUiCourt(d.id, { courtId: d.id, ...d.data() } as SchemaCourt));
+      data.sort((a, b) => a.name.localeCompare(b.name, "zh-TW"));
+      cb(data);
     },
-    () => cb([]),
+    (err) => console.error("[courts] 監聽失敗：", err.code, err.message),
   );
 }
 
@@ -86,14 +90,48 @@ export async function submitPendingCourtReport(data: {
   });
 }
 
-export async function saveCourt(
-  court: Omit<SchemaCourt, "createdAt" | "updatedAt"> & { courtId: string },
-) {
+export type CourtFormInput = {
+  name: string;
+  city: string;
+  district: string;
+  address: string;
+  lat: number;
+  lng: number;
+  indoor: "indoor" | "outdoor";
+  surfaceType: "hard" | "clay" | "grass";
+  totalCourts: number;
+  hasNightLight: boolean;
+  openHours: string;
+  phone: string;
+  bookingMethod: string;
+  bookingUrl: string;
+  notes: string;
+  status?: "active" | "pending" | "closed";
+};
+
+export async function saveCourt(courtId: string, input: CourtFormInput) {
   await setDoc(
-    doc(db, "courts", court.courtId),
+    doc(db, "courts", courtId),
     {
-      ...court,
+      courtId,
+      name: input.name.trim(),
+      city: input.city,
+      district: input.district.trim(),
+      address: input.address.trim(),
+      lat: input.lat,
+      lng: input.lng,
+      indoor: input.indoor,
+      surfaceType: input.surfaceType,
+      totalCourts: input.totalCourts,
+      hasNightLight: input.hasNightLight,
+      openHours: input.openHours.trim(),
+      phone: input.phone.trim(),
+      bookingMethod: input.bookingMethod.trim(),
+      bookingUrl: input.bookingUrl.trim(),
+      notes: input.notes.trim(),
+      status: input.status ?? "active",
       isDeleted: false,
+      deletedAt: null,
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
     },

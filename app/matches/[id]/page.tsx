@@ -14,24 +14,50 @@ import {
 import { giveHeart } from "@/lib/heartService";
 import { isWithin24Hours } from "@/lib/timeUtils";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import type { MatchApplication } from "@/lib/schema";
-
-const USE_FIREBASE = process.env.NEXT_PUBLIC_USE_FIREBASE === "true";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
+import { toUiMatch } from "@/lib/mappers";
+import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
 
 export default function MatchDetailPage() {
   const params = useParams<{ id: string }>();
   const matchId = params.id;
   const { user, matches, applyMatch } = useApp();
+  const [rawMatch, setRawMatch] = useState<(SchemaMatch & { matchId: string }) | null | undefined>(
+    undefined,
+  );
   const [applications, setApplications] = useState<MatchApplication[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [transferUid, setTransferUid] = useState("");
 
-  const match = matches.find((item) => item.id === matchId);
+  useEffect(() => {
+    if (!matchId) return;
+    let cancelled = false;
+    setRawMatch(undefined);
+
+    const fetchMatch = async () => {
+      try {
+        const snap = await getDoc(doc(db, "matches", matchId));
+        if (cancelled) return;
+        if (snap.exists()) {
+          setRawMatch({ matchId: snap.id, ...snap.data() } as SchemaMatch & { matchId: string });
+        } else {
+          setRawMatch(null);
+        }
+      } catch (err) {
+        console.error("讀取失敗：", err);
+        if (!cancelled) setRawMatch(null);
+      }
+    };
+
+    void fetchMatch();
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
 
   useEffect(() => {
-    if (!USE_FIREBASE || !matchId) return;
+    if (!matchId) return;
     return onSnapshot(
       query(
         collection(db, "match_applications"),
@@ -39,17 +65,31 @@ export default function MatchDetailPage() {
         where("isDeleted", "==", false),
       ),
       (snap) => {
-        setApplications(
-          snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication),
-        );
+        setApplications(snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication));
       },
+      (err) => console.error("[match_applications] 監聽失敗：", err.code, err.message),
     );
   }, [matchId]);
+
+  const match = useMemo(() => {
+    if (rawMatch) return toUiMatch(rawMatch, rawMatch.matchId, applications);
+    return matches.find((item) => item.id === matchId);
+  }, [rawMatch, applications, matches, matchId]);
+
+  const loading = rawMatch === undefined && !match;
 
   const myApp = useMemo(
     () => applications.find((app) => app.applicantUid === user?.uid && !app.isDeleted),
     [applications, user?.uid],
   );
+
+  if (loading) {
+    return (
+      <section className="mx-auto max-w-md px-6 py-16 text-center">
+        <p className="text-sm text-muted">載入中...</p>
+      </section>
+    );
+  }
 
   if (!match) {
     return (

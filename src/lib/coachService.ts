@@ -3,7 +3,6 @@ import {
   collection,
   onSnapshot,
   query,
-  where,
   orderBy,
   doc,
   updateDoc,
@@ -45,13 +44,14 @@ function toAdminCoach(id: string, data: Coach): AdminCoach {
 
 export function subscribeToCoaches(cb: (coaches: UiCoach[]) => void) {
   return onSnapshot(
-    query(
-      collection(db, "coaches"),
-      where("isDeleted", "==", false),
-      orderBy("createdAt", "desc"),
-    ),
-    (snap) => cb(snap.docs.map((d) => toUiCoach(d.id, { coachId: d.id, ...d.data() } as Coach))),
-    () => cb([]),
+    collection(db, "coaches"),
+    (snap) => {
+      const coaches = snap.docs
+        .filter((d) => (d.data() as Coach).isDeleted !== true)
+        .map((d) => toUiCoach(d.id, { coachId: d.id, ...d.data() } as Coach));
+      cb(coaches);
+    },
+    (err) => console.error("[coaches] 監聽失敗：", err.code, err.message),
   );
 }
 

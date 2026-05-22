@@ -26,9 +26,9 @@ export default function ClubPageClient() {
 
   useEffect(() => {
     const unsubscribe = subscribeToClubs((liveClubs) => {
-      if (liveClubs.length > 0) {
-        setClubs(liveClubs.map((club) => toUiClub(club)));
-      }
+      setClubs(
+        liveClubs.length > 0 ? liveClubs.map((club) => toUiClub(club)) : seedClubs,
+      );
     });
     return unsubscribe;
   }, []);

@@ -250,18 +250,26 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
             <p className="mt-3 text-sm leading-6 text-muted">{court.address}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
-                {court.ownership}
-              </span>
-              <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
-                {court.environment}
-              </span>
-              <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
-                {court.surface.includes("硬地") ? "硬地" : court.surface}
-              </span>
-              <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
-                {court.courtCount ?? "-"} 面
-              </span>
+              {court.ownership && court.ownership !== "—" ? (
+                <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
+                  {court.ownership}
+                </span>
+              ) : null}
+              {court.environment ? (
+                <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
+                  {court.environment}
+                </span>
+              ) : null}
+              {court.surface ? (
+                <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
+                  {court.surface}
+                </span>
+              ) : null}
+              {court.courtCount != null ? (
+                <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
+                  {court.courtCount} 面
+                </span>
+              ) : null}
               {court.hasLighting ? (
                 <span className="rounded-full bg-ivory px-3 py-1 text-xs font-medium text-pine">
                   夜間照明
@@ -270,46 +278,55 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
             </div>
 
             <div className="mt-4 border-t border-parchment pt-4 text-sm leading-6 text-muted">
-              <p>開放時間：平日 {court.weekdayHours}</p>
-              <p>預約方式：{court.bookingMethod || "待確認"}</p>
-              <p>電話：{court.phone || "待確認"}</p>
-              {court.offPeakRate !== null || court.peakRate !== null ? (
-                <p>
-                  費用：離峰 {court.offPeakRate ?? "-"} / 尖峰{" "}
-                  {court.peakRate ?? "-"} 元/小時
-                </p>
-              ) : null}
-              {court.bookingUrl.startsWith("http") ? (
-                <p>預約資訊：官方網站</p>
-              ) : court.bookingUrl ? (
-                <p>預約資訊：{court.bookingUrl}</p>
-              ) : null}
+              {court.weekdayHours ? <p>開放時間：{court.weekdayHours}</p> : null}
+              {court.bookingMethod ? <p>預約方式：{court.bookingMethod}</p> : null}
+              {court.phone ? <p>電話：{court.phone}</p> : null}
+              {court.notes ? <p>備註：{court.notes}</p> : null}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <a
-                href={
-                  court.latitude !== null && court.longitude !== null
-                    ? `https://www.google.com/maps/search/?api=1&query=${court.latitude},${court.longitude}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(court.address)}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="flex h-11 items-center justify-center rounded-lg bg-clay text-sm font-bold text-white"
-              >
-                📍 查看地圖
-              </a>
-              <a
-                href={
-                  court.bookingUrl.startsWith("http")
-                    ? court.bookingUrl
-                    : `tel:${court.phone}`
-                }
-                target={court.bookingUrl.startsWith("http") ? "_blank" : undefined}
-                rel="noreferrer"
-                className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
-              >
-                📅 前往預約
-              </a>
+              {court.latitude != null && court.longitude != null && court.latitude !== 0 ? (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${court.latitude},${court.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-11 items-center justify-center rounded-lg bg-clay text-sm font-bold text-white"
+                >
+                  📍 查看地圖
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="flex h-11 cursor-not-allowed items-center justify-center rounded-lg bg-parchment text-sm font-bold text-muted"
+                >
+                  📍 查看地圖
+                </button>
+              )}
+              {court.bookingUrl.startsWith("http") ? (
+                <a
+                  href={court.bookingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                >
+                  📅 前往預約
+                </a>
+              ) : court.phone ? (
+                <a
+                  href={`tel:${court.phone}`}
+                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                >
+                  📞 撥打預約
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-parchment text-sm font-bold text-muted"
+                >
+                  📅 前往預約
+                </button>
+              )}
             </div>
           </article>
         ))}
