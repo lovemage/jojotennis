@@ -29,6 +29,7 @@ export default function MatchDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [transferUid, setTransferUid] = useState("");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
 
   useEffect(() => {
     if (!matchId) return;
@@ -112,6 +113,7 @@ export default function MatchDetailPage() {
   const acceptedMembers = match.applicants.filter((a) => a.status === "accepted");
   const pendingApplicants = match.applicants.filter((a) => a.status === "pending");
   const showHearts = match.status === "closed" && !isCancelled;
+  const joinMode = match.joinMode ?? "approval";
 
   async function runAction(action: () => Promise<void>) {
     setError("");
@@ -142,7 +144,19 @@ export default function MatchDetailPage() {
         <p className="mt-1 text-sm text-muted">{match.venue}</p>
         <p className="mt-1 text-sm text-muted">
           主揪 {match.ownerNickname} · 還差 {Math.max(match.totalSlots - match.filledSlots, 0)} 人
+          {joinMode === "public"
+            ? " · 🔓 公開"
+            : joinMode === "private"
+              ? " · 🔒 私人"
+              : ""}
         </p>
+        {isOwner && joinMode === "private" && match.joinCode ? (
+          <div className="mt-4 rounded-xl border border-dashed border-clay bg-clay/5 px-4 py-3">
+            <p className="text-xs font-semibold text-clay">私人球局加入碼</p>
+            <p className="mt-1 text-2xl font-bold tracking-[0.25em] text-pine">{match.joinCode}</p>
+            <p className="mt-1 text-xs text-muted">分享給朋友，輸入後可直接加入，無需你審核。</p>
+          </div>
+        ) : null}
         {match.note ? <p className="mt-4 text-sm leading-6 text-pine">{match.note}</p> : null}
       </div>
 
@@ -161,10 +175,13 @@ export default function MatchDetailPage() {
         transferUid={transferUid}
         setTransferUid={setTransferUid}
         applyMatch={applyMatch}
+        joinMode={joinMode}
+        joinCodeInput={joinCodeInput}
+        setJoinCodeInput={setJoinCodeInput}
         runAction={runAction}
       />
 
-      {isOwner && pendingApplicants.length > 0 ? (
+      {isOwner && joinMode === "approval" && pendingApplicants.length > 0 ? (
         <div>
           <h2 className="mt-8 text-lg font-bold text-pine">待審申請</h2>
           {pendingApplicants.map((applicant) => {
@@ -279,6 +296,9 @@ function ActionButtons({
   transferUid,
   setTransferUid,
   applyMatch,
+  joinMode,
+  joinCodeInput,
+  setJoinCodeInput,
   runAction,
 }: {
   user: ReturnType<typeof useApp>["user"];
@@ -292,7 +312,10 @@ function ActionButtons({
   transferable: MatchApplication[];
   transferUid: string;
   setTransferUid: (value: string) => void;
-  applyMatch: (matchId: string) => void;
+  applyMatch: (matchId: string, joinCode?: string) => Promise<{ ok: boolean; msg: string }>;
+  joinMode: "public" | "private" | "approval";
+  joinCodeInput: string;
+  setJoinCodeInput: (value: string) => void;
   runAction: (action: () => Promise<void>) => Promise<void>;
 }) {
   if (!user) {
@@ -357,14 +380,48 @@ function ActionButtons({
   }
 
   if (!myApp && !isFull) {
+    if (joinMode === "private") {
+      return (
+        <div className="mt-6 space-y-3">
+          <p className="text-sm text-muted">此為私人球局，請輸入主揪提供的 6 位數加入碼。</p>
+          <input
+            inputMode="numeric"
+            maxLength={6}
+            value={joinCodeInput}
+            onChange={(event) => setJoinCodeInput(event.target.value.replace(/\D/g, ""))}
+            placeholder="000000"
+            className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-center text-lg tracking-[0.3em] outline-none focus:border-clay"
+          />
+          <button
+            type="button"
+            disabled={busy || joinCodeInput.length !== 6}
+            onClick={() =>
+              runAction(async () => {
+                const result = await applyMatch(match.id, joinCodeInput);
+                if (!result.ok) throw new Error(result.msg);
+              })
+            }
+            className="w-full rounded-full bg-gold px-5 py-3 text-sm font-bold text-pine disabled:opacity-50"
+          >
+            輸入加入碼並加入
+          </button>
+        </div>
+      );
+    }
+
     return (
       <button
         type="button"
         disabled={busy}
-        onClick={() => applyMatch(match.id)}
+        onClick={() =>
+          runAction(async () => {
+            const result = await applyMatch(match.id);
+            if (!result.ok) throw new Error(result.msg);
+          })
+        }
         className="mt-6 w-full rounded-full bg-gold px-5 py-3 text-sm font-bold text-pine disabled:opacity-50"
       >
-        我要加入
+        {joinMode === "public" ? "直接加入" : "我要加入"}
       </button>
     );
   }

@@ -88,6 +88,8 @@ export function toUiMatch(
     filledSlots: raw.filledSlots ?? 0,
     note: raw.note ?? "",
     status,
+    joinMode: raw.joinMode ?? "approval",
+    joinCode: raw.joinCode,
     isDeleted: raw.isDeleted ?? false,
     applicants,
   };

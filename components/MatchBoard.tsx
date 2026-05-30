@@ -62,7 +62,12 @@ export default function MatchBoard() {
     totalPlayers: "4人",
     spotsNeeded: "2人",
     notes: "",
+    joinMode: "public" as "public" | "private",
   });
+  const [joinPrompt, setJoinPrompt] = useState<Match | null>(null);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joinBusy, setJoinBusy] = useState(false);
 
   function requireLogin(action: () => void) {
     if (!user) {
@@ -136,6 +141,7 @@ export default function MatchBoard() {
       ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
       totalSlots: parsePeople(draft.totalPlayers),
       note: draft.notes,
+      joinMode: draft.joinMode,
     });
     setDraft((currentDraft) => ({
       ...currentDraft,
@@ -148,19 +154,43 @@ export default function MatchBoard() {
     closeSheet();
   }
 
-  function joinMatch(match: Match) {
+  async function joinMatch(match: Match, joinCode?: string) {
     if (!user) {
       setShowLoginPrompt(true);
       return;
     }
 
-    applyMatch(match.id);
+    const joinMode = match.joinMode ?? "approval";
+    if (joinMode === "private" && !joinCode) {
+      setJoinPrompt(match);
+      setJoinCodeInput("");
+      setJoinError("");
+      return;
+    }
+
+    setJoinBusy(true);
+    setJoinError("");
+    const result = await applyMatch(match.id, joinCode);
+    setJoinBusy(false);
+
+    if (!result.ok) {
+      setJoinError(result.msg);
+      if (joinMode === "private") {
+        setJoinPrompt(match);
+      }
+      return;
+    }
+
+    setJoinPrompt(null);
     const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
       type: "match",
       relatedId: match.id,
       name: `揪球：${match.title}`,
       ownerUid: match.ownerUid,
-      systemMessage: `你已申請加入「${match.title}」，等待主揪回覆。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`,
+      systemMessage:
+        joinMode === "approval"
+          ? `你已申請加入「${match.title}」，等待主揪回覆。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`
+          : `你已加入「${match.title}」！可以在聊天室討論集合資訊。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`,
     });
     router.push(`/messages?conversation=${conversationId}`);
   }
@@ -248,6 +278,11 @@ export default function MatchBoard() {
                   <h2 className="font-bold text-pine">{match.title}</h2>
                   <p className="mt-1 text-sm text-muted">
                     {match.city}・{match.district || "地區待確認"}
+                    {(match.joinMode ?? "approval") === "public"
+                      ? " · 🔓 公開"
+                      : (match.joinMode ?? "approval") === "private"
+                        ? " · 🔒 私人"
+                        : ""}
                   </p>
                 </div>
                 {remaining === 0 ? (
@@ -306,7 +341,7 @@ export default function MatchBoard() {
                   disabled={isClosed || hasApplied || isOwner}
                   onClick={(event) => {
                     event.stopPropagation();
-                    joinMatch(match);
+                    void joinMatch(match);
                   }}
                   className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
                     isClosed || hasApplied || isOwner ? "bg-muted" : "bg-clay"
@@ -357,6 +392,36 @@ export default function MatchBoard() {
             </p>
 
             <form onSubmit={handleCreatePost} className="mt-5 space-y-4">
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">加入方式</span>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => ({ ...current, joinMode: "public" }))}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
+                      draft.joinMode === "public"
+                        ? "border-clay bg-clay/10 text-clay"
+                        : "border-parchment bg-ivory text-muted"
+                    }`}
+                  >
+                    🔓 公開
+                    <span className="mt-1 block text-xs font-normal">球友直接加入</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => ({ ...current, joinMode: "private" }))}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
+                      draft.joinMode === "private"
+                        ? "border-clay bg-clay/10 text-clay"
+                        : "border-parchment bg-ivory text-muted"
+                    }`}
+                  >
+                    🔒 私人
+                    <span className="mt-1 block text-xs font-normal">自動產生加入碼</span>
+                  </button>
+                </div>
+              </label>
+
               <label className="block">
                 <span className="text-xs font-semibold text-muted">標題</span>
                 <input
@@ -552,7 +617,9 @@ export default function MatchBoard() {
               </label>
 
               <p className="pt-2 text-center text-xs text-muted">
-                發布後有球友送出加入申請，由你決定是否接受。
+                {draft.joinMode === "public"
+                  ? "公開球局：球友可直接加入，無需你審核。"
+                  : "私人球局：系統會產生 6 位數加入碼，分享給朋友即可加入。"}
               </p>
               <button
                 type="submit"
@@ -561,6 +628,46 @@ export default function MatchBoard() {
                 發布揪球邀請
               </button>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {joinPrompt ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+          <div className="w-full max-w-sm rounded-[1.5rem] bg-white p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-pine">輸入加入碼</h3>
+            <p className="mt-2 text-sm text-muted">
+              「{joinPrompt.title}」為私人球局，請向主揪索取 6 位數加入碼。
+            </p>
+            <input
+              inputMode="numeric"
+              maxLength={6}
+              value={joinCodeInput}
+              onChange={(event) => setJoinCodeInput(event.target.value.replace(/\D/g, ""))}
+              placeholder="000000"
+              className="mt-4 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-center text-lg tracking-[0.3em] outline-none focus:border-clay"
+            />
+            {joinError ? <p className="mt-2 text-sm text-red-600">{joinError}</p> : null}
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setJoinPrompt(null);
+                  setJoinError("");
+                }}
+                className="rounded-full border border-parchment px-4 py-3 text-sm font-bold text-muted"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={joinBusy || joinCodeInput.length !== 6}
+                onClick={() => void joinMatch(joinPrompt, joinCodeInput)}
+                className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+              >
+                確認加入
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

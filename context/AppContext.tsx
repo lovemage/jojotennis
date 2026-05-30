@@ -22,6 +22,7 @@ import {
 import {
   createMatch as createMatchService,
   applyToMatch,
+  joinMatchWithCode,
   respondToApplication,
   closeMatch as closeMatchService,
   undoApplicationToPending,
@@ -120,7 +121,7 @@ interface AppState {
   markAllRead: () => void;
   addMatch: (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => void;
   closeMatch: (matchId: string) => void;
-  applyMatch: (matchId: string) => void;
+  applyMatch: (matchId: string, joinCode?: string) => Promise<{ ok: boolean; msg: string }>;
   respondToApplicant: (matchId: string, applicantUid: string, accept: boolean) => void;
   getOrCreateConversation: (
     targetUid: string,
@@ -634,6 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ntrpRequired: match.ntrpRequired,
           totalSlots: match.totalSlots,
           note: match.note,
+          joinMode: match.joinMode,
         });
         return;
       }
@@ -643,6 +645,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         filledSlots: 0,
         applicants: [],
         status: "open",
+        joinMode: match.joinMode ?? "public",
+        joinCode:
+          match.joinMode === "private"
+            ? String(Math.floor(100000 + Math.random() * 900000))
+            : undefined,
       };
       setMatches((prev) => [newMatch, ...prev]);
     },
@@ -658,14 +665,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyMatch = useCallback(
-    (matchId: string) => {
-      if (!user) return;
-      const match = (displayMatches).find((m) => m.id === matchId);
-      if (!match || match.status === "closed") return;
-      if (match.applicants.some((a) => a.uid === user.uid) || match.ownerUid === user.uid) return;
+    async (matchId: string, joinCode?: string) => {
+      if (!user) return { ok: false, msg: "請先登入" };
+      const match = displayMatches.find((m) => m.id === matchId);
+      if (!match || match.status === "closed") return { ok: false, msg: "球局不存在或已結束" };
+      if (match.applicants.some((a) => a.uid === user.uid && a.status !== "declined" && a.status !== "removed") || match.ownerUid === user.uid) {
+        return { ok: false, msg: "已加入或已申請此球局" };
+      }
+
+      const joinMode = match.joinMode ?? "approval";
 
       if (USE_FIREBASE) {
-        void applyToMatch(matchId, user.uid, user.nickname);
+        const result =
+          joinMode === "private"
+            ? await joinMatchWithCode(matchId, joinCode ?? "", user.uid, user.nickname)
+            : await applyToMatch(matchId, user.uid, user.nickname);
+
+        if (result.ok && joinMode === "approval") {
+          sendMessage({
+            type: "match_request",
+            fromUid: user.uid,
+            fromNickname: user.nickname,
+            toUid: match.ownerUid,
+            content: `${user.nickname} 申請加入你的「${match.title}」，請確認是否接受。`,
+            relatedId: matchId,
+          });
+        }
+        return result;
+      }
+
+      if (joinMode === "private") {
+        if (!joinCode?.trim() || joinCode.trim() !== match.joinCode) {
+          return { ok: false, msg: "加入碼錯誤" };
+        }
+      }
+
+      const autoJoin = joinMode === "public" || joinMode === "private";
+      const nextMatch: Match = {
+        ...match,
+        filledSlots: autoJoin ? match.filledSlots + 1 : match.filledSlots,
+        status:
+          autoJoin && match.filledSlots + 1 >= match.totalSlots ? "closed" : match.status,
+        applicants: [
+          ...match.applicants,
+          {
+            uid: user.uid,
+            nickname: user.nickname,
+            status: autoJoin ? "accepted" : "pending",
+          },
+        ],
+      };
+      setMatches((prev) => prev.map((m) => (m.id === matchId ? nextMatch : m)));
+
+      if (!autoJoin) {
         sendMessage({
           type: "match_request",
           fromUid: user.uid,
@@ -674,24 +726,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           content: `${user.nickname} 申請加入你的「${match.title}」，請確認是否接受。`,
           relatedId: matchId,
         });
-        return;
+        return { ok: true, msg: "申請已送出" };
       }
 
-      const nextMatch: Match = {
-        ...match,
-        applicants: [...match.applicants, { uid: user.uid, nickname: user.nickname, status: "pending" }],
-      };
-      setMatches((prev) => prev.map((m) => (m.id === matchId ? nextMatch : m)));
-      sendMessage({
-        type: "match_request",
-        fromUid: user.uid,
-        fromNickname: user.nickname,
-        toUid: match.ownerUid,
-        content: `${user.nickname} 申請加入你的「${match.title}」，請確認是否接受。`,
-        relatedId: matchId,
-      });
+      return { ok: true, msg: "已成功加入球局" };
     },
-    [user, matches, displayMatches, sendMessage],
+    [user, displayMatches, sendMessage],
   );
 
   const respondToApplicant = useCallback(

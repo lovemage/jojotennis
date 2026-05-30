@@ -36,6 +36,8 @@ export interface Message {
   handledAt?: number;
 }
 
+export type MatchJoinMode = "public" | "private" | "approval";
+
 export interface Match {
   id: string;
   title: string;
@@ -53,6 +55,8 @@ export interface Match {
   filledSlots: number;
   note: string;
   status: "open" | "closed";
+  joinMode?: MatchJoinMode;
+  joinCode?: string;
   isDeleted?: boolean;
   applicants: {
     uid: string;

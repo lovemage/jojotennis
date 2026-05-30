@@ -59,6 +59,8 @@ export interface PendingCourt {
   createdAt: Date;
 }
 
+export type MatchJoinMode = "public" | "private" | "approval";
+
 export interface Match extends BaseDocument {
   matchId: string;
   ownerUid: string;
@@ -76,6 +78,10 @@ export interface Match extends BaseDocument {
   filledSlots: number;
   status: "open" | "closed" | "cancelled";
   note: string;
+  /** public = 直接加入；private = 輸入加入碼；approval = 主揪審核（舊資料預設） */
+  joinMode?: MatchJoinMode;
+  /** private 模式自動產生的 6 位數加入碼 */
+  joinCode?: string;
 }
 
 export interface MatchApplication extends BaseDocument {

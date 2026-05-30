@@ -23,13 +23,87 @@ import {
   getOrCreateDirectConversation,
 } from "./messageService";
 import { isTimeRangeValid, weekdayLabel } from "./timeUtils";
-import type { Match, MatchApplication } from "./schema";
+import type { Match, MatchApplication, MatchJoinMode } from "./schema";
 
 const BASE = {
   isDeleted: false,
   deletedAt: null,
   updatedAt: serverTimestamp(),
 };
+
+function generateJoinCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function resolveJoinMode(match: Match): MatchJoinMode {
+  return match.joinMode ?? "approval";
+}
+
+async function directJoinMatch(
+  matchId: string,
+  applicantUid: string,
+  applicantNickname: string,
+): Promise<{ ok: boolean; msg: string }> {
+  const mSnap = await getDoc(doc(db, "matches", matchId));
+  if (!mSnap.exists()) return { ok: false, msg: "球局不存在" };
+  const m = mSnap.data() as Match;
+  if (m.isDeleted || m.status === "cancelled") return { ok: false, msg: "球局已取消" };
+  if (m.status === "closed" || m.filledSlots >= m.totalSlots) return { ok: false, msg: "球局已額滿" };
+  if (m.ownerUid === applicantUid) return { ok: false, msg: "主揪不需要申請" };
+
+  const dup = await getDocs(
+    query(
+      collection(db, "match_applications"),
+      where("matchId", "==", matchId),
+      where("applicantUid", "==", applicantUid),
+      where("isDeleted", "==", false),
+    ),
+  );
+  const existing = dup.docs[0];
+  const existingData = existing?.data() as MatchApplication | undefined;
+  if (existingData?.status === "accepted") return { ok: false, msg: "你已加入此球局" };
+  if (existingData?.status === "pending") return { ok: false, msg: "已申請過此球局" };
+
+  const matchTitle = m.title;
+  await runTransaction(db, async (tx) => {
+    const mRef = doc(db, "matches", matchId);
+    const latest = await tx.get(mRef);
+    const latestMatch = latest.data() as Match;
+    if (latestMatch.filledSlots >= latestMatch.totalSlots) throw new Error("球局已額滿");
+    const newFilled = latestMatch.filledSlots + 1;
+    tx.update(mRef, {
+      filledSlots: increment(1),
+      status: newFilled >= latestMatch.totalSlots ? "closed" : "open",
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  if (existing) {
+    await updateDoc(existing.ref, {
+      status: "accepted",
+      applicantNickname,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    await addDoc(collection(db, "match_applications"), {
+      matchId,
+      applicantUid,
+      applicantNickname,
+      status: "accepted",
+      ...BASE,
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  await addUserToConversation(`match_${matchId}`, applicantUid);
+  await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 已加入球局！`);
+  const mSnap2 = await getDoc(doc(db, "matches", matchId));
+  if ((mSnap2.data() as Match).status === "closed") {
+    await sendSystemMessage(`match_${matchId}`, `「${matchTitle}」招募完成！祝大家打球愉快 🎾`);
+  }
+
+  return { ok: true, msg: "已成功加入球局" };
+}
 
 export async function createMatch(data: {
   ownerUid: string;
@@ -44,14 +118,20 @@ export async function createMatch(data: {
   ntrpRequired: string[];
   totalSlots: number;
   note: string;
+  joinMode?: MatchJoinMode;
 }): Promise<string> {
   if (!isTimeRangeValid(data.startTime, data.endTime))
     throw new Error("結束時間必須晚於開始時間");
   if (data.totalSlots < 1 || data.totalSlots > 8) throw new Error("人數需在 1–8 人之間");
   if (!data.title.trim()) throw new Error("標題不可為空");
 
+  const joinMode = data.joinMode ?? "public";
+  const joinCode = joinMode === "private" ? generateJoinCode() : null;
+
   const ref = await addDoc(collection(db, "matches"), {
     ...data,
+    joinMode,
+    ...(joinCode ? { joinCode } : {}),
     ...BASE,
     weekday: weekdayLabel(data.date),
     filledSlots: 0,
@@ -136,6 +216,14 @@ export async function applyToMatch(
   if (m.status === "closed") return { ok: false, msg: "球局已額滿" };
   if (m.ownerUid === applicantUid) return { ok: false, msg: "主揪不需要申請" };
 
+  const joinMode = resolveJoinMode(m);
+  if (joinMode === "public") {
+    return directJoinMatch(matchId, applicantUid, applicantNickname);
+  }
+  if (joinMode === "private") {
+    return { ok: false, msg: "此球局需要加入碼" };
+  }
+
   const dup = await getDocs(
     query(
       collection(db, "match_applications"),
@@ -158,6 +246,20 @@ export async function applyToMatch(
   });
   await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 申請加入，等待主揪確認。`);
   return { ok: true, msg: "申請已送出" };
+}
+
+export async function joinMatchWithCode(
+  matchId: string,
+  joinCode: string,
+  applicantUid: string,
+  applicantNickname: string,
+): Promise<{ ok: boolean; msg: string }> {
+  const mSnap = await getDoc(doc(db, "matches", matchId));
+  if (!mSnap.exists()) return { ok: false, msg: "球局不存在" };
+  const m = mSnap.data() as Match;
+  if (resolveJoinMode(m) !== "private") return { ok: false, msg: "此球局不需要加入碼" };
+  if (!m.joinCode || m.joinCode !== joinCode.trim()) return { ok: false, msg: "加入碼錯誤" };
+  return directJoinMatch(matchId, applicantUid, applicantNickname);
 }
 
 export async function respondToApplication(
