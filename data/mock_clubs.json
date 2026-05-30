@@ -1,0 +1,28 @@
+[
+  {
+    "id": "club-da",
+    "name": "大安慢速網球社",
+    "memberCount": 128,
+    "district": "大安區",
+    "nextEventTitle": "週末友誼雙打",
+    "nextEventAt": "2026-05-18T09:00:00+08:00",
+    "line_url": "https://line.me/R/ti/g/example-da"
+  },
+  {
+    "id": "club-xinyi",
+    "name": "信義晨光網球團",
+    "memberCount": 86,
+    "district": "信義區",
+    "nextEventTitle": "晨間對牆＋小場",
+    "nextEventAt": "2026-05-17T07:00:00+08:00"
+  },
+  {
+    "id": "club-zhongli",
+    "name": "中壢假日約球會",
+    "memberCount": 54,
+    "district": "中壢區",
+    "nextEventTitle": "紅土體驗日",
+    "nextEventAt": "2026-05-24T15:00:00+08:00",
+    "line_url": "https://line.me/R/ti/g/example-zl"
+  }
+]
