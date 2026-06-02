@@ -10,10 +10,14 @@ type CourtImagesAdminPanelProps = {
   initialImages?: CourtImage[];
 };
 
+const MAX_IMAGES = 10;
+
 export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: CourtImagesAdminPanelProps) {
   const [images, setImages] = useState<CourtImage[]>(initialImages);
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
+  const remainingSlots = Math.max(MAX_IMAGES - images.length, 0);
+  const reachedLimit = remainingSlots === 0;
 
   useEffect(() => {
     let active = true;
@@ -29,12 +33,20 @@ export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: C
 
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
+    if (reachedLimit) {
+      setStatus(`已達 ${MAX_IMAGES} 張上限，請先刪除部分圖片再上傳。`);
+      return;
+    }
     setUploading(true);
     setStatus("");
 
+    const incoming = Array.from(files);
+    const accepted = incoming.slice(0, remainingSlots);
+    const skipped = incoming.length - accepted.length;
+
     try {
       const nextImages = [...images];
-      for (const file of Array.from(files)) {
+      for (const file of accepted) {
         const signResponse = await fetch("/api/cloudinary/sign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -72,7 +84,11 @@ export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: C
 
       await updateCourtImages(courtId, nextImages);
       setImages(nextImages);
-      setStatus("圖片已更新。");
+      setStatus(
+        skipped > 0
+          ? `已上傳 ${accepted.length} 張；其餘 ${skipped} 張因超過 ${MAX_IMAGES} 張上限未上傳。`
+          : "圖片已更新。",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "圖片上傳失敗");
     } finally {
@@ -96,16 +112,27 @@ export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: C
   return (
     <div className="mt-4 rounded-lg bg-ivory p-3">
       <label className="block">
-        <span className="text-xs font-bold text-pine">球場圖片</span>
+        <span className="text-xs font-bold text-pine">
+          球場圖片（{images.length}/{MAX_IMAGES}）
+        </span>
         <input
           type="file"
           accept="image/*"
           multiple
-          disabled={uploading}
-          onChange={(event) => void uploadFiles(event.target.files)}
-          className="mt-2 w-full text-xs text-muted"
+          disabled={uploading || reachedLimit}
+          onChange={(event) => {
+            const files = event.target.files;
+            event.target.value = "";
+            void uploadFiles(files);
+          }}
+          className="mt-2 w-full text-xs text-muted disabled:opacity-50"
         />
       </label>
+      <p className="mt-1 text-[11px] text-muted">
+        {reachedLimit
+          ? "已達上限，請先刪除部分圖片再上傳。"
+          : `每個球場最多 ${MAX_IMAGES} 張，目前還可再上傳 ${remainingSlots} 張。`}
+      </p>
       {status ? <p className="mt-2 text-xs font-bold text-clay">{status}</p> : null}
       {images.length > 0 ? (
         <div className="mt-3 grid grid-cols-3 gap-2">

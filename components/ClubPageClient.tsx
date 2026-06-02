@@ -36,6 +36,7 @@ export default function ClubPageClient() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="clubs"
         eyebrow="Clubs"
         title="社團"
         description="探索地區社團、固定團練與球隊資訊，找到長期一起打球的夥伴。"

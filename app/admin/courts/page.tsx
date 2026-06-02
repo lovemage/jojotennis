@@ -8,6 +8,7 @@ import { useApp } from "@/context/AppContext";
 import { subscribeToCourts, saveCourt, softDeleteCourt, type CourtFormInput } from "@/lib/courtService";
 import { taiwanCities } from "@/data/cities";
 import type { Court } from "@/data/courts";
+import { getTwDistricts } from "@/constants/twRegions";
 
 const emptyDraft = {
   name: "",
@@ -33,6 +34,13 @@ export default function AdminCourtsPage() {
   const [busyId, setBusyId] = useState("");
   const [draft, setDraft] = useState(emptyDraft);
   const pendingReports = courtReports.filter((report) => report.status === "pending");
+  const draftDistricts = getTwDistricts(draft.city);
+  const mapPreviewQuery = draft.address.trim()
+    ? [draft.city, draft.district, draft.address].filter(Boolean).join("")
+    : "";
+  const mapPreviewUrl = mapPreviewQuery
+    ? `https://www.google.com/maps?q=${encodeURIComponent(mapPreviewQuery)}&output=embed`
+    : "";
 
   useEffect(() => subscribeToCourts(setCourts), []);
 
@@ -133,7 +141,7 @@ export default function AdminCourtsPage() {
           <select
             required
             value={draft.city}
-            onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
+            onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value, district: "" }))}
             className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
           >
             {taiwanCities.map((c) => (
@@ -142,13 +150,19 @@ export default function AdminCourtsPage() {
               </option>
             ))}
           </select>
-          <input
+          <select
             required
             value={draft.district}
             onChange={(e) => setDraft((d) => ({ ...d, district: e.target.value }))}
-            placeholder="③ 行政區（必填）"
             className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
-          />
+          >
+            <option value="">③ 行政區（必填）</option>
+            {draftDistricts.map((district) => (
+              <option key={district} value={district}>
+                {district}
+              </option>
+            ))}
+          </select>
           <input
             required
             value={draft.address}
@@ -156,6 +170,21 @@ export default function AdminCourtsPage() {
             placeholder="④ 地址（必填）"
             className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
           />
+          {mapPreviewUrl ? (
+            <div className="overflow-hidden rounded-2xl border border-parchment bg-ivory">
+              <div className="flex items-center justify-between px-4 py-3 text-xs font-bold text-muted">
+                <span>Maps embed 預覽</span>
+                <span className="truncate pl-3 text-right font-medium">{mapPreviewQuery}</span>
+              </div>
+              <iframe
+                title="球場地址地圖預覽"
+                src={mapPreviewUrl}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                className="h-56 w-full border-0"
+              />
+            </div>
+          ) : null}
           <select
             required
             value={draft.indoor}

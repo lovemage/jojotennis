@@ -67,23 +67,38 @@ async function fetchSupabaseNews() {
   return (data ?? []).map((row) => toNewsArticleFromSupabase(row as Record<string, unknown>));
 }
 
+function subscribeToFirestoreNews(cb: (articles: NewsArticle[]) => void) {
+  return onSnapshot(
+    query(collection(db, "news"), orderBy("publishedAt", "desc")),
+    (snap) => {
+      cb(snap.docs.map((d) => toNewsArticle(d.id, d.data() as Record<string, unknown>)));
+    },
+    () => cb([]),
+  );
+}
+
 export function subscribeToNews(cb: (articles: NewsArticle[]) => void) {
   if (USE_SUPABASE && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
     let active = true;
+    let fallbackUnsub: (() => void) | null = null;
 
     fetchSupabaseNews()
       .then((articles) => {
         if (active) cb(articles);
       })
       .catch((err) => {
-        console.error("[news] Supabase 讀取失敗：", err.message);
-        if (active) cb([]);
+        console.warn("[news] Supabase 讀取失敗，改用 Firebase：", err.message);
+        if (active) {
+          cb([]);
+          fallbackUnsub = subscribeToFirestoreNews(cb);
+        }
       });
 
     const channel = supabase
       .channel(createRealtimeChannelName())
       .on("postgres_changes", { event: "*", schema: "public", table: "news" }, () => {
+        if (fallbackUnsub) return;
         fetchSupabaseNews()
           .then((articles) => {
             if (active) cb(articles);
@@ -94,17 +109,12 @@ export function subscribeToNews(cb: (articles: NewsArticle[]) => void) {
 
     return () => {
       active = false;
+      fallbackUnsub?.();
       void supabase.removeChannel(channel);
     };
   }
 
-  return onSnapshot(
-    query(collection(db, "news"), orderBy("publishedAt", "desc")),
-    (snap) => {
-      cb(snap.docs.map((d) => toNewsArticle(d.id, d.data() as Record<string, unknown>)));
-    },
-    () => cb([]),
-  );
+  return subscribeToFirestoreNews(cb);
 }
 
 export async function saveNewsArticle(

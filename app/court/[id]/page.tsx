@@ -91,18 +91,16 @@ export default function CourtDetailPage({ params }: { params: { id: string } }) 
         <CourtsMap courts={[court]} />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        {court.bookingUrl.startsWith("http") ? (
-          <a href={court.bookingUrl} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center rounded-lg bg-clay text-sm font-bold text-white">
-            前往預約
+      {court.phone ? (
+        <div className="mt-6">
+          <a
+            href={`tel:${court.phone}`}
+            className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+          >
+            📞 撥打電話
           </a>
-        ) : null}
-        {court.phone ? (
-          <a href={`tel:${court.phone}`} className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine">
-            撥打電話
-          </a>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }

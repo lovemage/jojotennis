@@ -21,7 +21,7 @@ export default function BuddiesPage() {
 
   function startChat(targetUid: string, targetNickname: string) {
     if (!user) {
-      router.push("/auth");
+      router.push("/login");
       return;
     }
     const convId = getOrCreateConversation(targetUid, targetNickname);
@@ -31,6 +31,7 @@ export default function BuddiesPage() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="buddies"
         eyebrow="Buddies"
         title="球友列表"
         description="找線上活躍的球友、發私訊揪球"

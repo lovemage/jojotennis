@@ -11,6 +11,11 @@ type SendEmailInput = {
   meta?: Record<string, unknown>;
 };
 
+export const OFFICIAL_SUPPORT_EMAIL =
+  process.env.OFFICIAL_SUPPORT_EMAIL || "support@jojotennis.com";
+export const OFFICIAL_EMAIL_FROM =
+  process.env.OFFICIAL_EMAIL_FROM || `JoJo Tennis <${OFFICIAL_SUPPORT_EMAIL}>`;
+
 function getResendClient() {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("Missing RESEND_API_KEY");
@@ -44,8 +49,9 @@ export async function sendEmail(input: SendEmailInput) {
   try {
     const resend = getResendClient();
     const result = await resend.emails.send({
-      from: "JoJo Tennis <support@jojotennis.com>",
+      from: OFFICIAL_EMAIL_FROM,
       to: input.to,
+      replyTo: OFFICIAL_SUPPORT_EMAIL,
       subject: input.subject,
       react: input.react,
       tags: [{ name: "template", value: input.template }],

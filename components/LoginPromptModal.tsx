@@ -29,7 +29,7 @@ export default function LoginPromptModal({
             繼續瀏覽
           </button>
           <Link
-            href="/auth"
+            href="/login"
             className="rounded-full bg-clay px-4 py-3 text-center text-sm font-bold text-white"
           >
             立即登入 / 註冊

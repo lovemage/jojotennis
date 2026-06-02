@@ -1,3 +1,5 @@
+import type { CourtImage } from "@/lib/supabase.types";
+
 export type CourtBookingStatus = "bookable" | "walk-in" | "unknown";
 
 export type Court = {
@@ -23,6 +25,7 @@ export type Court = {
   bookingUrl: string;
   bookingStatus: CourtBookingStatus;
   notes: string;
+  images?: CourtImage[];
 };
 
 export const courts: Court[] = [

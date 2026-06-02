@@ -22,7 +22,7 @@ export default function AdminModulePage({
         <div className="rounded-[2rem] bg-white p-6 text-center shadow-sm ring-1 ring-parchment">
           <h1 className="text-2xl font-bold text-pine">請先登入管理帳號</h1>
           <Link
-            href="/auth"
+            href="/login"
             className="mt-5 inline-flex rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
           >
             前往登入

@@ -5,6 +5,9 @@ export type { NewsArticle };
 export interface User {
   uid: string;
   email: string;
+  provider?: "password" | "google" | "line";
+  emailVerified?: boolean;
+  emailVerificationSentAt?: number;
   nickname: string;
   ntrp: string;
   region: string;

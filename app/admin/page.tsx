@@ -37,6 +37,7 @@ export default function AdminPage() {
   const modules = [
     ["/admin/users", "會員管理"],
     ["/admin/matches", "約球管理"],
+    ["/admin/pages", "分頁管理"],
     ["/admin/reviews", "球具評測管理"],
     ["/admin/courts", "球場管理"],
     ["/admin/pending", "球場回報審核"],

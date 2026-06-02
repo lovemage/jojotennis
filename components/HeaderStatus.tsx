@@ -323,10 +323,10 @@ export default function HeaderStatus() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Link href="/auth" className="rounded-full border border-pine px-3 py-1.5 text-xs font-bold text-pine">
+            <Link href="/login" className="rounded-full border border-pine px-3 py-1.5 text-xs font-bold text-pine">
               登入
             </Link>
-            <Link href="/auth" className="rounded-full bg-clay px-3 py-1.5 text-xs font-bold text-white">
+            <Link href="/login" className="rounded-full bg-clay px-3 py-1.5 text-xs font-bold text-white">
               免費註冊
             </Link>
           </div>

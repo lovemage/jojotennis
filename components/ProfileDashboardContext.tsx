@@ -237,7 +237,7 @@ export default function ProfileDashboardContext({
             登入後管理你的揪球、社團與教練資訊
           </p>
           <Link
-            href="/auth"
+            href="/login"
             className="mt-5 flex w-full items-center justify-center rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
           >
             登入 / 免費註冊

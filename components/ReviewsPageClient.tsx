@@ -30,6 +30,7 @@ export default function ReviewsPageClient() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="reviews"
         eyebrow="Reviews"
         title="球具評測"
         description="球拍、球線、球鞋與配件實測，幫你找到適合自己的裝備。"

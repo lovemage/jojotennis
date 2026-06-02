@@ -38,6 +38,8 @@ create table if not exists public.users (
   avatar_public_id text,
   role text not null default 'user' check (role in ('user', 'admin', 'coach')),
   provider text not null default 'password' check (provider in ('password', 'google', 'line')),
+  email_verified boolean not null default false,
+  email_verification_sent_at timestamptz,
   is_active boolean not null default true,
   hearts_received integer not null default 0,
   bio text,

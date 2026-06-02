@@ -36,6 +36,11 @@ export function toUiUser(
   return {
     uid,
     email: data.email || email || "",
+    provider: data.provider ?? "password",
+    emailVerified: data.emailVerified ?? false,
+    emailVerificationSentAt: data.emailVerificationSentAt
+      ? toMillis(data.emailVerificationSentAt)
+      : undefined,
     nickname,
     ntrp: data.ntrp || "2.0",
     region: data.region || "台北市",

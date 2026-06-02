@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useScrollHide } from "@/hooks/useScrollHide";
 import { useUiStore } from "@/stores/useUiStore";
@@ -134,7 +135,7 @@ function DropdownNavButton({
           className={`absolute bottom-[calc(100%+0.85rem)] ${positionClass} z-[90] flex w-48 justify-center gap-2 rounded-full border border-pine/10 bg-white p-2 shadow-[0_18px_50px_rgba(30,61,47,0.2)] backdrop-blur-xl`}
         >
           {links.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
               onClick={onClose}
@@ -143,7 +144,7 @@ function DropdownNavButton({
               }`}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </div>
       ) : null}

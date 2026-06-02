@@ -6,6 +6,7 @@ import { taiwanCities } from "@/data/cities";
 import { useApp, type Match } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 import { useUiStore } from "@/stores/useUiStore";
+import PageHero from "@/components/PageHero";
 
 function isMatchExpired(match: Match): boolean {
   if (!match.date || !match.endTime) return false;
@@ -241,20 +242,13 @@ export default function MatchBoard() {
 
   return (
     <div>
-      <div className="relative flex min-h-[22.75rem] flex-col justify-end overflow-hidden bg-pine text-white shadow-[0_20px_60px_rgba(30,61,47,0.18)]">
-        <img
-          src="/images/hero/match.png"
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-pine/70 via-pine/42 to-pine/92" />
-        <div className="relative px-5 pb-6 pt-7">
-          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-gold">Match</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight">揪球友</h1>
-          <p className="mt-4 text-sm leading-7 text-parchment">
-            用等級、地點和可打時間找到合適的球友，讓臨打和固定練球更容易。
-          </p>
+      <PageHero
+        settingsKey="match"
+        eyebrow="Match"
+        title="揪球友"
+        description="用等級、地點和可打時間找到合適的球友，讓臨打和固定練球更容易。"
+        image="/images/hero/match.png"
+      >
           <div className="mt-5 flex gap-3">
             <button
               type="button"
@@ -287,8 +281,7 @@ export default function MatchBoard() {
               我要揪球
             </button>
           </div>
-        </div>
-      </div>
+      </PageHero>
 
       <div className="mt-6 divide-y divide-pine/10 border-y border-pine/10 bg-white shadow-[0_16px_48px_rgba(30,61,47,0.07)]">
         {loading ? (

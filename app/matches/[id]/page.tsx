@@ -345,7 +345,7 @@ function ActionButtons({
   if (!user) {
     return (
       <p className="mt-6 text-sm text-muted">
-        <Link href="/auth" className="font-semibold text-clay">
+        <Link href="/login" className="font-semibold text-clay">
           登入
         </Link>{" "}
         後才能申請加入或管理球局。

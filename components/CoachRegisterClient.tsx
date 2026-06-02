@@ -180,6 +180,7 @@ export default function CoachRegisterClient() {
   return (
     <section className="mx-auto max-w-md px-6 py-10">
       <PageHero
+        settingsKey="coachRegister"
         eyebrow="Coach Register"
         title="申請成為平台教練"
         description="填寫個人與身分驗證資料，由管理員審核通過後即會刊登在「找教練」列表。"

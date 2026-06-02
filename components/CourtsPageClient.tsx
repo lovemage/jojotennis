@@ -21,6 +21,7 @@ export default function CourtsPageClient() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="courts"
         eyebrow="Courts"
         title="找球場"
         description="搜尋全台網球場，一鍵查詢場地資訊與預約方式。"

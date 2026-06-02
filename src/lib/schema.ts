@@ -8,6 +8,9 @@ export interface BaseDocument {
 export interface User extends BaseDocument {
   uid: string;
   email: string;
+  provider?: "password" | "google" | "line";
+  emailVerified?: boolean;
+  emailVerificationSentAt?: Date | null;
   nickname: string;
   ntrp: string;
   region: string;

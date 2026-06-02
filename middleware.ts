@@ -12,7 +12,7 @@ export function middleware(request: NextRequest) {
   const hasSession = request.cookies.get(SESSION_COOKIE)?.value === "1";
   if (!hasSession) {
     const url = request.nextUrl.clone();
-    url.pathname = "/auth";
+    url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }

@@ -7,6 +7,8 @@ import { taiwanCities } from "@/data/cities";
 import { useApp } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 import CourtsMap from "@/components/CourtsMap";
+import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
+import { getTwDistricts } from "@/constants/twRegions";
 
 type CourtsExplorerProps = {
   courts: Court[];
@@ -36,6 +38,7 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
     bookingMethod: "",
     note: "",
   });
+  const reportDistricts = getTwDistricts(report.city);
 
   const visibleCourts = useMemo(
     () => [
@@ -65,6 +68,7 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
           bookingUrl: "",
           bookingStatus: "unknown" as const,
           notes: report.note,
+          images: [],
         })),
     ],
     [courtReports, courts],
@@ -118,6 +122,11 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
   }
 
   function updateReport(field: keyof typeof report, value: string) {
+    if (field === "city") {
+      setReport((current) => ({ ...current, city: value, district: "" }));
+      return;
+    }
+
     setReport((current) => ({ ...current, [field]: value }));
   }
 
@@ -140,8 +149,7 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
   return (
     <div className="mt-6">
       <div className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-clay">搜尋與篩選</p>
-        <label className="mt-4 block">
+        <label className="block">
           <span className="text-xs font-semibold text-muted">關鍵字</span>
           <input
             value={query}
@@ -253,11 +261,33 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
 
         {viewMode === "map" ? <CourtsMap courts={filteredCourts} /> : null}
 
-        {viewMode === "list" ? filteredCourts.map((court) => (
-          <article
+        {viewMode === "list" ? filteredCourts.map((court) => {
+          const sortedImages = [...(court.images ?? [])].sort(
+            (a, b) => a.sortOrder - b.sortOrder,
+          );
+          const coverImage = sortedImages[0];
+          return (
+          <Link
             key={court.id}
-            className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
+            href={`/court/${court.id}`}
+            className="block overflow-hidden rounded-[1.5rem] border border-parchment bg-white shadow-sm transition hover:border-clay hover:shadow-md"
           >
+            <article>
+            {coverImage ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={getOptimizedCloudinaryUrl(coverImage.publicId, { width: 720 })}
+                srcSet={[
+                  `${getOptimizedCloudinaryUrl(coverImage.publicId, { width: 480 })} 480w`,
+                  `${getOptimizedCloudinaryUrl(coverImage.publicId, { width: 960 })} 960w`,
+                ].join(", ")}
+                sizes="(max-width: 768px) 100vw, 480px"
+                alt={coverImage.caption || court.name}
+                className="aspect-[16/9] w-full object-cover"
+                loading="lazy"
+              />
+            ) : null}
+            <div className="p-5">
             <div>
               <p className="text-xs font-semibold text-clay">
                 {court.city} · {court.district}
@@ -303,59 +333,11 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
               {court.phone ? <p>電話：{court.phone}</p> : null}
               {court.notes ? <p>備註：{court.notes}</p> : null}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link
-                href={`/court/${court.id}`}
-                className="col-span-2 flex h-11 items-center justify-center rounded-lg bg-pine text-sm font-bold text-white"
-              >
-                查看球場詳情
-              </Link>
-              {court.latitude != null && court.longitude != null && court.latitude !== 0 ? (
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${court.latitude},${court.longitude}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-11 items-center justify-center rounded-lg bg-clay text-sm font-bold text-white"
-                >
-                  📍 查看地圖
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="flex h-11 cursor-not-allowed items-center justify-center rounded-lg bg-parchment text-sm font-bold text-muted"
-                >
-                  📍 查看地圖
-                </button>
-              )}
-              {court.bookingUrl.startsWith("http") ? (
-                <a
-                  href={court.bookingUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
-                >
-                  📅 前往預約
-                </a>
-              ) : court.phone ? (
-                <a
-                  href={`tel:${court.phone}`}
-                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
-                >
-                  📞 撥打預約
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="flex h-11 cursor-not-allowed items-center justify-center rounded-lg border border-parchment text-sm font-bold text-muted"
-                >
-                  📅 前往預約
-                </button>
-              )}
             </div>
-          </article>
-        )) : null}
+            </article>
+          </Link>
+        );
+        }) : null}
       </div>
       {isReportOpen ? (
         <div className="fixed inset-0 z-50 bg-ink/40" onClick={() => setIsReportOpen(false)}>
@@ -391,12 +373,18 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
                   <option key={cityOption}>{cityOption}</option>
                 ))}
               </select>
-              <input
+              <select
                 value={report.district}
                 onChange={(event) => updateReport("district", event.target.value)}
-                placeholder="行政區，例如：大安區"
                 className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
-              />
+              >
+                <option value="">選擇行政區</option>
+                {reportDistricts.map((district) => (
+                  <option key={district} value={district}>
+                    {district}
+                  </option>
+                ))}
+              </select>
               <input
                 required
                 value={report.address}

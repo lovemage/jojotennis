@@ -14,9 +14,18 @@ import type { User } from "./schema";
 import { USE_SUPABASE } from "./config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
-const BASE_USER = (uid: string, email: string, nickname: string, avatarUrl = "") => ({
+const BASE_USER = (
+  uid: string,
+  email: string,
+  nickname: string,
+  avatarUrl = "",
+  provider: "password" | "google" | "line" = "password",
+) => ({
   uid,
   email,
+  provider,
+  emailVerified: provider === "google",
+  emailVerificationSentAt: null,
   nickname,
   ntrp: "2.0",
   region: "台北市",
@@ -52,6 +61,8 @@ async function upsertSupabaseUser(
     avatar_url: avatarUrl,
     role: "user",
     provider,
+    email_verified: provider === "google",
+    email_verification_sent_at: null,
     is_active: true,
     hearts_received: 0,
     bio: "",
@@ -68,6 +79,11 @@ function toSchemaUserFromSupabase(row: Record<string, unknown>): User {
     uid: String(row.uid ?? ""),
     email: String(row.email ?? ""),
     nickname: String(row.nickname ?? "新球友"),
+    provider: (row.provider as User["provider"]) ?? "password",
+    emailVerified: Boolean(row.email_verified ?? false),
+    emailVerificationSentAt: row.email_verification_sent_at
+      ? new Date(String(row.email_verification_sent_at))
+      : null,
     ntrp: String(row.ntrp ?? "2.0"),
     region: String(row.region ?? "台北市"),
     yearsPlaying: Number(row.years_playing ?? 0),
@@ -133,10 +149,30 @@ export async function loginWithGoogle(): Promise<FBUser> {
         cred.user.email ?? "",
         nickname,
         avatarUrl,
+        "google",
       ),
     );
     await upsertSupabaseUser(cred.user.uid, cred.user.email ?? "", nickname, avatarUrl, "google");
     void sendWelcomeEmail(cred.user, nickname);
+  } else {
+    await setDoc(
+      ref,
+      {
+        provider: "google",
+        email: cred.user.email ?? "",
+        emailVerified: cred.user.emailVerified,
+        avatarUrl: cred.user.photoURL ?? "",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await upsertSupabaseUser(
+      cred.user.uid,
+      cred.user.email ?? "",
+      cred.user.displayName ?? "網球球友",
+      cred.user.photoURL ?? "",
+      "google",
+    );
   }
   return cred.user;
 }

@@ -27,7 +27,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
       <section className="mx-auto max-w-md px-6 py-16 text-center">
         <h1 className="text-3xl font-bold text-pine">請先登入管理帳號</h1>
         <Link
-          href="/auth"
+          href="/login"
           className="mt-6 inline-flex rounded-full bg-clay px-6 py-3 text-sm font-bold text-white"
         >
           前往登入

@@ -61,7 +61,7 @@ export default function CoachPostPage() {
   function submitNeed(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) {
-      router.push("/auth");
+      router.push("/login");
       return;
     }
 
@@ -84,6 +84,7 @@ export default function CoachPostPage() {
   return (
     <section className="mx-auto max-w-md px-6 py-10">
       <PageHero
+        settingsKey="studentNeed"
         eyebrow="Student Need"
         title="發布學習需求"
         description="讓教練了解你的程度、預算與學習目標。"

@@ -10,6 +10,7 @@ export default function NewsPageClient() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="news"
         eyebrow="News"
         title="網球新聞 & 活動"
         description="賽事快訊・品牌活動・新品上市，掌握台灣與國際網球消息。"

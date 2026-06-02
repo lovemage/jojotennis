@@ -2,6 +2,7 @@ import { db } from "./firebase";
 import {
   collection,
   addDoc,
+  getDoc,
   onSnapshot,
   doc,
   setDoc,
@@ -11,7 +12,7 @@ import {
 import { USE_SUPABASE } from "./config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 import type { Court as SchemaCourt } from "./schema";
-import type { Court as UiCourt } from "@/data/courts";
+import { courts as seedCourts, type Court as UiCourt } from "@/data/courts";
 import type { CourtImage } from "./supabase.types";
 
 type SupabaseCourtRow = {
@@ -46,8 +47,11 @@ function surfaceLabel(type: SchemaCourt["surfaceType"]): string {
 }
 
 function toUiCourt(id: string, data: SchemaCourt): UiCourt {
-  const ownership =
-    (data as SchemaCourt & { ownership?: string }).ownership?.trim() || "";
+  const extended = data as SchemaCourt & {
+    ownership?: string;
+    images?: CourtImage[];
+  };
+  const ownership = extended.ownership?.trim() || "";
 
   return {
     id: data.courtId || id,
@@ -72,6 +76,7 @@ function toUiCourt(id: string, data: SchemaCourt): UiCourt {
     bookingUrl: data.bookingUrl ?? "",
     bookingStatus: data.bookingUrl?.startsWith("http") ? "bookable" : "unknown",
     notes: data.notes ?? "",
+    images: Array.isArray(extended.images) ? extended.images : [],
   };
 }
 
@@ -98,7 +103,8 @@ function toUiCourtFromSupabase(row: SupabaseCourtRow): UiCourt {
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
     updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
     ownership: row.ownership ?? "",
-  } as SchemaCourt & { ownership?: string });
+    images: Array.isArray(row.images) ? row.images : [],
+  } as SchemaCourt & { ownership?: string; images?: CourtImage[] });
 }
 
 async function fetchSupabaseCourts() {
@@ -114,34 +120,7 @@ async function fetchSupabaseCourts() {
   return ((data ?? []) as SupabaseCourtRow[]).map(toUiCourtFromSupabase);
 }
 
-export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
-  if (USE_SUPABASE && hasSupabaseConfig()) {
-    const supabase = getSupabaseBrowserClient();
-    let active = true;
-
-    fetchSupabaseCourts()
-      .then((courts) => {
-        if (active) cb(courts);
-      })
-      .catch((err) => console.error("[courts] Supabase 讀取失敗：", err.message));
-
-    const channel = supabase
-      .channel("public:courts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "courts" }, () => {
-        fetchSupabaseCourts()
-          .then((courts) => {
-            if (active) cb(courts);
-          })
-          .catch((err) => console.error("[courts] Supabase realtime 更新失敗：", err.message));
-      })
-      .subscribe();
-
-    return () => {
-      active = false;
-      void supabase.removeChannel(channel);
-    };
-  }
-
+function subscribeToFirestoreCourts(cb: (courts: UiCourt[]) => void) {
   return onSnapshot(
     collection(db, "courts"),
     (snap) => {
@@ -158,23 +137,86 @@ export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
   );
 }
 
-export async function fetchCourtById(courtId: string): Promise<(UiCourt & { images: CourtImage[] }) | null> {
+export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
   if (USE_SUPABASE && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase
-      .from("courts")
-      .select("*")
-      .eq("id", courtId)
-      .eq("is_deleted", false)
-      .maybeSingle();
+    let active = true;
+    let fallbackUnsub: (() => void) | null = null;
 
-    if (error) throw error;
-    if (!data) return null;
-    const row = data as SupabaseCourtRow;
-    return {
-      ...toUiCourtFromSupabase(row),
-      images: Array.isArray(row.images) ? row.images : [],
+    fetchSupabaseCourts()
+      .then((courts) => {
+        if (active) cb(courts);
+      })
+      .catch((err) => {
+        console.warn("[courts] Supabase 讀取失敗，改用 Firebase：", err.message);
+        if (active) {
+          cb([]);
+          fallbackUnsub = subscribeToFirestoreCourts(cb);
+        }
+      });
+
+    const channel = supabase
+      .channel("public:courts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "courts" }, () => {
+        if (fallbackUnsub) return;
+        fetchSupabaseCourts()
+          .then((courts) => {
+            if (active) cb(courts);
+          })
+          .catch((err) => console.error("[courts] Supabase realtime 更新失敗：", err.message));
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      fallbackUnsub?.();
+      void supabase.removeChannel(channel);
     };
+  }
+
+  return subscribeToFirestoreCourts(cb);
+}
+
+export async function fetchCourtById(courtId: string): Promise<(UiCourt & { images: CourtImage[] }) | null> {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("courts")
+        .select("*")
+        .eq("id", courtId)
+        .eq("is_deleted", false)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        const row = data as SupabaseCourtRow;
+        return {
+          ...toUiCourtFromSupabase(row),
+          images: Array.isArray(row.images) ? row.images : [],
+        };
+      }
+    } catch (err) {
+      console.warn("[court] Supabase 讀取失敗，改用 Firebase：", err instanceof Error ? err.message : err);
+    }
+  }
+
+  try {
+    const snap = await getDoc(doc(db, "courts", courtId));
+    if (snap.exists()) {
+      const raw = snap.data() as SchemaCourt & { ownership?: string; images?: CourtImage[] };
+      if (raw.isDeleted !== true && raw.status !== "closed") {
+        const ui = toUiCourt(snap.id, { ...raw, courtId: snap.id } as SchemaCourt);
+        return { ...ui, images: ui.images ?? [] };
+      }
+    }
+  } catch (err) {
+    console.warn("[court] Firestore 讀取失敗：", err instanceof Error ? err.message : err);
+  }
+
+  const seed = seedCourts.find((c) => c.id === courtId);
+  if (seed) {
+    return { ...seed, images: seed.images ?? [] };
   }
 
   return null;

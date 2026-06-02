@@ -122,6 +122,7 @@ export default function CoachPageClient() {
   return (
     <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        settingsKey="coach"
         eyebrow="Coach"
         title="找到屬於你的網球教練"
         description="依等級、地區、費用篩選，直接透過站內私訊聯繫教練"
