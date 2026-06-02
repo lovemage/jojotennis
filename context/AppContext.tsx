@@ -313,7 +313,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAdmin,
     messageUnsubs,
     setConvMeta,
-    setConvMessages,
   );
 
   useEffect(() => {

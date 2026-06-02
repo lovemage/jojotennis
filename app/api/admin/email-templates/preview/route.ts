@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { renderToStaticMarkup } from "react-dom/server";
+import { render } from "@react-email/render";
 import TemplatedEmail from "@/emails/TemplatedEmail";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   const appBaseUrl = (process.env.APP_BASE_URL ?? "https://jojotennis.com").replace(/\/$/, "");
   const ctaHref = appBaseUrl + EMAIL_TEMPLATE_DEFAULT_CTA_PATH[key];
 
-  const markup = renderToStaticMarkup(
+  const html = await render(
     TemplatedEmail({
       subject: draft.subject,
       greeting: draft.greeting,
@@ -79,8 +79,6 @@ export async function POST(request: Request) {
       variables,
     }),
   );
-
-  const html = `<!DOCTYPE html>${markup}`;
   const resolvedSubject = applyVars(draft.subject, variables);
 
   return NextResponse.json({ html, subject: resolvedSubject, variables });

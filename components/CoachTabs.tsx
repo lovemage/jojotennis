@@ -28,12 +28,10 @@ export default function CoachTabs({
   coaches = [],
   studentNeeds = [],
   activeTab: activeTabProp,
-  onTabChange,
 }: CoachTabsProps) {
   const { user, sendMessage, studentNeeds: dynamicStudentNeeds = [] } = useApp();
-  const [internalTab, setInternalTab] = useState<"coaches" | "students">("coaches");
+  const [internalTab] = useState<"coaches" | "students">("coaches");
   const activeTab = activeTabProp ?? internalTab;
-  const setActiveTab = onTabChange ?? setInternalTab;
   const [city, setCity] = useState(allCitiesLabel);
   const [level, setLevel] = useState(allLevelsLabel);
   const [messageTarget, setMessageTarget] = useState("");

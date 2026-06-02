@@ -23,7 +23,6 @@ import type {
   NewsArticle,
   StudentNeedRecord,
   CourtReport,
-  ChatMessage,
   Conversation,
 } from "@/lib/uiTypes";
 import { newsArticles as seedNewsArticles } from "@/data/news";
@@ -274,7 +273,6 @@ export function useFirebaseConversationListeners(
   isAdmin: boolean,
   _messageUnsubs: MutableRefObject<Record<string, () => void>>,
   setConvMeta: (fn: (prev: ConvMeta) => ConvMeta) => void,
-  _setConvMessages: (fn: (prev: Record<string, ChatMessage[]>) => Record<string, ChatMessage[]>) => void,
 ) {
   useEffect(() => {
     if (!enabled || !db) return;
