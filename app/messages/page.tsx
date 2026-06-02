@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { Conversation } from "@/context/AppContext";
 import { sendMessage as sendFirestoreMessage } from "@/lib/messageService";
+import UserStatsBadge from "@/components/UserStatsBadge";
 
 type ConversationTab = "all" | "match" | "club";
 
@@ -25,12 +26,14 @@ function formatTime(value?: number) {
 }
 
 function MessagesPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     user,
     conversations,
     matches,
     sendChatMessage,
+    subscribeConversationMessages,
     markConversationRead,
     undoApplicantDecision,
   } = useApp();
@@ -43,6 +46,7 @@ function MessagesPageContent() {
     matchId: string;
     applicantUid: string;
   } | null>(null);
+  const returnTo = searchParams.get("from");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -93,6 +97,13 @@ function MessagesPageContent() {
     }
   }, [markConversationRead, selectedConversation]);
 
+  useEffect(() => {
+    const id = selectedConversation?.id;
+    if (!id) return;
+    const unsubscribe = subscribeConversationMessages(id);
+    return unsubscribe;
+  }, [selectedConversation?.id, subscribeConversationMessages]);
+
   async function submitMessage(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!selectedConversation || !draft.trim() || !user) return;
@@ -133,10 +144,12 @@ function MessagesPageContent() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl px-4 py-4 pb-28">
+    <section className="mx-auto max-w-5xl px-0 md:px-4 md:py-4">
       <div
-        className="flex overflow-hidden rounded-[1.5rem] bg-white ring-1 ring-parchment"
-        style={{ height: "calc(100vh - 120px)" }}
+        className="flex overflow-hidden bg-white ring-1 ring-parchment md:rounded-[1.5rem]"
+        style={{
+          height: "calc(100dvh - 68px - 96px - env(safe-area-inset-bottom))",
+        }}
       >
         {/* 左欄：對話列表 */}
         <div
@@ -212,7 +225,14 @@ function MessagesPageContent() {
                 {isMobile && selectedId ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedId("")}
+                    onClick={() => {
+                      if (returnTo === "match") {
+                        router.push("/match");
+                        return;
+                      }
+
+                      setSelectedId("");
+                    }}
                     style={{
                       background: "none",
                       border: "none",
@@ -221,7 +241,7 @@ function MessagesPageContent() {
                       fontSize: "18px",
                       color: "#1E3D2F",
                     }}
-                    aria-label="返回對話列表"
+                    aria-label={returnTo === "match" ? "返回揪球" : "返回對話列表"}
                   >
                     ← 返回
                   </button>
@@ -237,6 +257,27 @@ function MessagesPageContent() {
                         ? "社團聊天室"
                         : "私人對話"}
                   </p>
+                  {selectedConversation.type === "match" &&
+                  selectedMatch &&
+                  selectedMatch.ownerUid === user.uid ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
+                      {selectedMatch.applicants
+                        .filter(
+                          (applicant) =>
+                            applicant.status === "accepted" || applicant.status === "pending",
+                        )
+                        .map((applicant) => (
+                          <span
+                            key={applicant.uid}
+                            className="inline-flex items-center gap-1 rounded-full bg-parchment px-2 py-0.5"
+                          >
+                            <span>{applicant.nickname}</span>
+                            <span>· UID: {applicant.uid.slice(0, 6)}</span>
+                            <UserStatsBadge uid={applicant.uid} />
+                          </span>
+                        ))}
+                    </div>
+                  ) : null}
                 </div>
                 {selectedConversation.type === "club" && selectedConversation.ownerUid === user.uid ? (
                   <span className="shrink-0 rounded-full bg-gold/25 px-3 py-1 text-xs font-bold text-pine">

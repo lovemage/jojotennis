@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { taiwanCities } from "@/data/cities";
 import { useApp, type Match } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
+import { useUiStore } from "@/stores/useUiStore";
+
+function isMatchExpired(match: Match): boolean {
+  if (!match.date || !match.endTime) return false;
+  const [y, mo, d] = match.date.split(/[\/\-]/).map((n) => Number.parseInt(n, 10));
+  const [h, mi] = match.endTime.split(":").map((n) => Number.parseInt(n, 10));
+  if (!y || !mo || !d) return false;
+  const end = new Date(y, mo - 1, d, h || 0, mi || 0).getTime();
+  if (Number.isNaN(end)) return false;
+  return Date.now() > end;
+}
 
 const ntrpOptions = ["不限", "1", "2", "3", "4", "5", "6–7"];
 
@@ -32,9 +43,18 @@ function parsePeople(value: string) {
   return Number.parseInt(value, 10) || 1;
 }
 
+function openDatePicker(input: HTMLInputElement | null) {
+  try {
+    input?.showPicker?.();
+  } catch {
+    input?.focus();
+  }
+}
+
 export default function MatchBoard() {
   const router = useRouter();
   const { user, matches, addMatch, applyMatch, getOrCreateConversation } = useApp();
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   if (typeof window !== "undefined") {
     console.log("目前 matches：", matches.length);
   }
@@ -47,6 +67,11 @@ export default function MatchBoard() {
     return () => window.clearTimeout(timer);
   }, [matches.length]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const setNavHidden = useUiStore((s) => s.setNavHidden);
+  useEffect(() => {
+    setNavHidden(isSheetOpen);
+    return () => setNavHidden(false);
+  }, [isSheetOpen, setNavHidden]);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
@@ -189,13 +214,17 @@ export default function MatchBoard() {
       ownerUid: match.ownerUid,
       systemMessage:
         joinMode === "approval"
-          ? `你已申請加入「${match.title}」，等待主揪回覆。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`
-          : `你已加入「${match.title}」！可以在聊天室討論集合資訊。\n⚠️ 請勿在平台外提前付款，謹防詐騙。`,
+          ? `你已申請加入「${match.title}」，等待主揪回覆。\n請勿在平台外提前付款，謹防詐騙。`
+          : `你已加入「${match.title}」！可以在聊天室討論集合資訊。\n請勿在平台外提前付款，謹防詐騙。`,
     });
-    router.push(`/messages?conversation=${conversationId}`);
+    router.push(`/messages?conversation=${conversationId}&from=match`);
   }
 
   function openMatchConversation(match: Match) {
+    if (isMatchExpired(match) || match.status === "closed") {
+      return;
+    }
+
     if (!user) {
       setShowLoginPrompt(true);
       return;
@@ -207,71 +236,83 @@ export default function MatchBoard() {
       name: `揪球：${match.title}`,
       ownerUid: match.ownerUid,
     });
-    router.push(`/messages?conversation=${conversationId}`);
+    router.push(`/messages?conversation=${conversationId}&from=match`);
   }
 
   return (
-    <div className="mt-6">
-      <div className="flex justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("find");
-            setIsSheetOpen(false);
-          }}
-          className={`rounded-full px-5 py-3 text-sm font-bold ${
-            activeTab === "find" ? "bg-clay text-white" : "bg-parchment text-ink"
-          }`}
-        >
-          🎾 找球友
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            requireLogin(() => {
-              setActiveTab("create");
-              setIsSheetOpen(true);
-            });
-          }}
-          className={`rounded-full px-5 py-3 text-sm font-bold ${
-            activeTab === "create" ? "bg-clay text-white" : "bg-parchment text-ink"
-          }`}
-        >
-          ✚ 我要揪球
-        </button>
+    <div>
+      <div className="relative flex min-h-[22.75rem] flex-col justify-end overflow-hidden bg-pine text-white shadow-[0_20px_60px_rgba(30,61,47,0.18)]">
+        <img
+          src="/images/hero/match.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-pine/70 via-pine/42 to-pine/92" />
+        <div className="relative px-5 pb-6 pt-7">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-gold">Match</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight">揪球友</h1>
+          <p className="mt-4 text-sm leading-7 text-parchment">
+            用等級、地點和可打時間找到合適的球友，讓臨打和固定練球更容易。
+          </p>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("find");
+                setIsSheetOpen(false);
+              }}
+              className={`flex-1 rounded-full px-5 py-3 text-sm font-bold transition ${
+                activeTab === "find"
+                  ? "bg-gold text-pine shadow-[0_12px_28px_rgba(201,168,76,0.25)]"
+                  : "border border-white/25 bg-white/10 text-white"
+              }`}
+            >
+              找球友
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                requireLogin(() => {
+                  setActiveTab("create");
+                  setIsSheetOpen(true);
+                });
+              }}
+              className={`flex-1 rounded-full px-5 py-3 text-sm font-bold transition ${
+                activeTab === "create"
+                  ? "bg-gold text-pine shadow-[0_12px_28px_rgba(201,168,76,0.25)]"
+                  : "border border-white/25 bg-white/10 text-white"
+              }`}
+            >
+              我要揪球
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-6 divide-y divide-pine/10 border-y border-pine/10 bg-white shadow-[0_16px_48px_rgba(30,61,47,0.07)]">
         {loading ? (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              minHeight: "200px",
-              color: "#8A7E6E",
-              fontSize: "14px",
-            }}
-          >
+          <div className="flex min-h-[200px] items-center justify-center text-sm text-muted">
             載入中...
           </div>
         ) : matches.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px", color: "#8A7E6E" }}>
-            目前沒有資料
-          </div>
+          <div className="px-5 py-10 text-center text-sm text-muted">目前沒有資料</div>
         ) : null}
         {!loading
           ? matches.map((match) => {
           const remaining = Math.max(match.totalSlots - match.filledSlots, 0);
-          const isClosed = match.status === "closed" || remaining === 0;
+          const isExpired = isMatchExpired(match);
+          const isClosed = match.status === "closed" || isExpired;
+          const isFull = remaining === 0;
           const hasApplied =
             !!user && match.applicants.some((applicant) => applicant.uid === user.uid);
           const isOwner = user?.uid === match.ownerUid;
           return (
             <article
               key={match.id}
-              onClick={() => openMatchConversation(match)}
-              className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
+              onClick={isClosed ? undefined : () => openMatchConversation(match)}
+              aria-disabled={isClosed}
+              className={`px-5 py-5 ${isClosed ? "cursor-default opacity-75" : "cursor-pointer"}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -279,19 +320,19 @@ export default function MatchBoard() {
                   <p className="mt-1 text-sm text-muted">
                     {match.city}・{match.district || "地區待確認"}
                     {(match.joinMode ?? "approval") === "public"
-                      ? " · 🔓 公開"
+                      ? " · 公開"
                       : (match.joinMode ?? "approval") === "private"
-                        ? " · 🔒 私人"
+                        ? " · 私人"
                         : ""}
                   </p>
                 </div>
-                {remaining === 0 ? (
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                    ✅ 招募完成
-                  </span>
-                ) : isClosed ? (
+                {isClosed ? (
                   <span className="rounded-full bg-muted/20 px-3 py-1 text-xs font-bold text-muted">
                     已結束
+                  </span>
+                ) : isFull ? (
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                    招募完成
                   </span>
                 ) : null}
               </div>
@@ -301,10 +342,10 @@ export default function MatchBoard() {
                     主揪：{match.ownerNickname}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-muted">
-                    📅 {match.weekday} {match.date}　⏰ {match.startTime}–{match.endTime}
+                    {match.weekday} {match.date}　{match.startTime}–{match.endTime}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted">
-                    🎾 NTRP {match.ntrpRequired.join("、")}　👥 {match.filledSlots}/
+                    NTRP {match.ntrpRequired.join("、")}　{match.filledSlots}/
                     {match.totalSlots} 人・還差 {remaining} 人
                   </p>
                   {match.note ? (
@@ -325,37 +366,39 @@ export default function MatchBoard() {
                   </div>
                 ) : null}
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openMatchConversation(match);
-                  }}
-                  className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
-                >
-                  開啟聊天室
-                </button>
-                <button
-                  type="button"
-                  disabled={isClosed || hasApplied || isOwner}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void joinMatch(match);
-                  }}
-                  className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
-                    isClosed || hasApplied || isOwner ? "bg-muted" : "bg-clay"
-                  }`}
-                >
-                  {isClosed
-                    ? "招募已結束"
-                    : hasApplied
-                      ? "✅ 已申請"
+              {!isClosed ? (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openMatchConversation(match);
+                    }}
+                    className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                  >
+                    開啟聊天室
+                  </button>
+                  <button
+                    type="button"
+                    disabled={hasApplied || isOwner || isFull}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void joinMatch(match);
+                    }}
+                    className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
+                      hasApplied || isOwner || isFull ? "bg-muted" : "bg-clay"
+                    }`}
+                  >
+                    {hasApplied
+                      ? "已申請"
                       : isOwner
                         ? "你是主揪"
-                        : "我要加入"}
-                </button>
-              </div>
+                        : isFull
+                          ? "招募已滿"
+                          : "我要加入"}
+                  </button>
+                </div>
+              ) : null}
             </article>
           );
           })
@@ -384,7 +427,7 @@ export default function MatchBoard() {
               onClick={closeSheet}
               className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-parchment text-sm font-bold text-muted"
             >
-              ✕
+              ×
             </button>
             <h2 className="text-2xl font-bold text-pine">發起揪球邀請</h2>
             <p className="mt-1 text-sm text-muted">
@@ -404,7 +447,7 @@ export default function MatchBoard() {
                         : "border-parchment bg-ivory text-muted"
                     }`}
                   >
-                    🔓 公開
+                    公開
                     <span className="mt-1 block text-xs font-normal">球友直接加入</span>
                   </button>
                   <button
@@ -416,7 +459,7 @@ export default function MatchBoard() {
                         : "border-parchment bg-ivory text-muted"
                     }`}
                   >
-                    🔒 私人
+                    私人
                     <span className="mt-1 block text-xs font-normal">自動產生加入碼</span>
                   </button>
                 </div>
@@ -471,12 +514,26 @@ export default function MatchBoard() {
                 <span className="text-xs font-semibold text-muted">日期</span>
                 <div className="mt-2 flex items-center gap-3">
                   <input
+                    ref={dateInputRef}
                     required
                     type="date"
                     value={draft.date}
+                    onClick={(event) => {
+                      openDatePicker(event.currentTarget);
+                    }}
+                    onFocus={(event) => {
+                      openDatePicker(event.currentTarget);
+                    }}
                     onChange={(event) => updateDraft("date", event.target.value)}
                     className="w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
                   />
+                  <button
+                    type="button"
+                    onClick={() => openDatePicker(dateInputRef.current)}
+                    className="shrink-0 rounded-full border border-parchment px-3 py-2 text-xs font-bold text-clay"
+                  >
+                    日曆
+                  </button>
                   <span className="shrink-0 text-sm font-bold text-clay">
                     {getWeekday(draft.date)}
                   </span>

@@ -8,8 +8,36 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { USE_SUPABASE } from "./config";
+import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 import type { Court as SchemaCourt } from "./schema";
 import type { Court as UiCourt } from "@/data/courts";
+import type { CourtImage } from "./supabase.types";
+
+type SupabaseCourtRow = {
+  id: string;
+  name: string;
+  city: string;
+  district: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  surface_type: SchemaCourt["surfaceType"];
+  indoor: SchemaCourt["indoor"];
+  total_courts: number | null;
+  has_night_light: boolean | null;
+  phone: string | null;
+  booking_url: string | null;
+  booking_method: string | null;
+  notes: string | null;
+  open_hours: string | null;
+  status: SchemaCourt["status"];
+  ownership: string | null;
+  images?: CourtImage[] | null;
+  is_deleted: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
 function surfaceLabel(type: SchemaCourt["surfaceType"]): string {
   if (type === "clay") return "紅土";
@@ -47,7 +75,73 @@ function toUiCourt(id: string, data: SchemaCourt): UiCourt {
   };
 }
 
+function toUiCourtFromSupabase(row: SupabaseCourtRow): UiCourt {
+  return toUiCourt(row.id, {
+    courtId: row.id,
+    name: row.name,
+    city: row.city,
+    district: row.district,
+    address: row.address,
+    lat: row.lat ?? 0,
+    lng: row.lng ?? 0,
+    surfaceType: row.surface_type,
+    indoor: row.indoor,
+    totalCourts: row.total_courts ?? 0,
+    hasNightLight: row.has_night_light ?? false,
+    phone: row.phone ?? "",
+    bookingUrl: row.booking_url ?? "",
+    bookingMethod: row.booking_method ?? "",
+    notes: row.notes ?? "",
+    openHours: row.open_hours ?? "",
+    status: row.status,
+    isDeleted: row.is_deleted ?? false,
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+    ownership: row.ownership ?? "",
+  } as SchemaCourt & { ownership?: string });
+}
+
+async function fetchSupabaseCourts() {
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("courts")
+    .select("*")
+    .eq("is_deleted", false)
+    .neq("status", "closed")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return ((data ?? []) as SupabaseCourtRow[]).map(toUiCourtFromSupabase);
+}
+
 export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    let active = true;
+
+    fetchSupabaseCourts()
+      .then((courts) => {
+        if (active) cb(courts);
+      })
+      .catch((err) => console.error("[courts] Supabase 讀取失敗：", err.message));
+
+    const channel = supabase
+      .channel("public:courts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "courts" }, () => {
+        fetchSupabaseCourts()
+          .then((courts) => {
+            if (active) cb(courts);
+          })
+          .catch((err) => console.error("[courts] Supabase realtime 更新失敗：", err.message));
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }
+
   return onSnapshot(
     collection(db, "courts"),
     (snap) => {
@@ -64,6 +158,28 @@ export function subscribeToCourts(cb: (courts: UiCourt[]) => void) {
   );
 }
 
+export async function fetchCourtById(courtId: string): Promise<(UiCourt & { images: CourtImage[] }) | null> {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from("courts")
+      .select("*")
+      .eq("id", courtId)
+      .eq("is_deleted", false)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+    const row = data as SupabaseCourtRow;
+    return {
+      ...toUiCourtFromSupabase(row),
+      images: Array.isArray(row.images) ? row.images : [],
+    };
+  }
+
+  return null;
+}
+
 export async function submitPendingCourtReport(data: {
   name: string;
   city: string;
@@ -75,6 +191,25 @@ export async function submitPendingCourtReport(data: {
   reportedByUid: string;
   reportedByName: string;
 }): Promise<void> {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase.from("pending_courts").insert({
+      name: data.name,
+      city: data.city,
+      district: data.district,
+      address: data.address,
+      description: data.note,
+      court_count: data.courtCount,
+      booking_method: data.bookingMethod,
+      reported_by_uid: data.reportedByUid,
+      reported_by_name: data.reportedByName,
+      status: "pending",
+    });
+
+    if (error) throw error;
+    return;
+  }
+
   await addDoc(collection(db, "pending_courts"), {
     name: data.name,
     city: data.city,
@@ -110,6 +245,35 @@ export type CourtFormInput = {
 };
 
 export async function saveCourt(courtId: string, input: CourtFormInput) {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase.from("courts").upsert({
+      id: courtId,
+      name: input.name.trim(),
+      city: input.city,
+      district: input.district.trim(),
+      address: input.address.trim(),
+      lat: input.lat,
+      lng: input.lng,
+      indoor: input.indoor,
+      surface_type: input.surfaceType,
+      total_courts: input.totalCourts,
+      has_night_light: input.hasNightLight,
+      open_hours: input.openHours.trim(),
+      phone: input.phone.trim(),
+      booking_method: input.bookingMethod.trim(),
+      booking_url: input.bookingUrl.trim(),
+      notes: input.notes.trim(),
+      status: input.status ?? "active",
+      is_deleted: false,
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) throw error;
+    return;
+  }
+
   await setDoc(
     doc(db, "courts", courtId),
     {
@@ -139,7 +303,40 @@ export async function saveCourt(courtId: string, input: CourtFormInput) {
   );
 }
 
+export async function updateCourtImages(courtId: string, images: CourtImage[]) {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    throw new Error("球場圖片管理需要 Supabase 設定");
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase
+    .from("courts")
+    .update({
+      images,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", courtId);
+
+  if (error) throw error;
+}
+
 export async function softDeleteCourt(courtId: string) {
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("courts")
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        status: "closed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", courtId);
+
+    if (error) throw error;
+    return;
+  }
+
   await updateDoc(doc(db, "courts", courtId), {
     isDeleted: true,
     deletedAt: serverTimestamp(),

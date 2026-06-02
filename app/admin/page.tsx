@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AdminGuard from "@/components/AdminGuard";
+import AdminHeroImagePanel from "@/components/AdminHeroImagePanel";
 import { useApp } from "@/context/AppContext";
 import { fetchAdminDashboardCounts, type AdminDashboardCounts } from "@/lib/adminService";
-
-const USE_FIREBASE = process.env.NEXT_PUBLIC_USE_FIREBASE === "true";
+import { USE_FIREBASE } from "@/lib/config";
 
 export default function AdminPage() {
   const { addAdminUser } = useApp();
@@ -27,7 +27,7 @@ export default function AdminPage() {
   const adminStats = [
     { label: "會員數", value: counts?.users ?? "—" },
     { label: "開放揪球", value: counts?.openMatches ?? "—" },
-    { label: "社團數", value: counts?.clubs ?? "—" },
+    { label: "評測內容", value: "—" },
     { label: "待審球場", value: counts?.pendingCourts ?? "—" },
     { label: "新聞數", value: counts?.news ?? "—" },
     { label: "教練數", value: counts?.coaches ?? "—" },
@@ -37,12 +37,16 @@ export default function AdminPage() {
   const modules = [
     ["/admin/users", "會員管理"],
     ["/admin/matches", "約球管理"],
-    ["/admin/clubs", "社團管理"],
+    ["/admin/reviews", "球具評測管理"],
     ["/admin/courts", "球場管理"],
     ["/admin/pending", "球場回報審核"],
     ["/admin/coaches", "教練管理"],
     ["/admin/news", "新聞管理"],
     ["/admin/messages", "訊息管理"],
+    ["/admin/announcements", "公告管理"],
+    ["/admin/legal", "隱私權／服務條款"],
+    ["/admin/email-broadcast", "Email 廣播"],
+    ["/admin/email-templates", "Email 模板"],
     ["/admin/test", "E2E 測試清單"],
   ];
 
@@ -106,6 +110,8 @@ export default function AdminPage() {
             </button>
           </form>
         </div>
+
+        <AdminHeroImagePanel />
 
         <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-clay">種子資料</p>

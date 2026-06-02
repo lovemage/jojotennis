@@ -17,6 +17,7 @@ export interface User extends BaseDocument {
   isActive: boolean;
   heartsReceived: number;
   bio?: string;
+  nicknameChangesUsed?: number;
 }
 
 export interface HeartRecord {
@@ -149,6 +150,32 @@ export interface Coach extends BaseDocument {
   bio: string;
   rating: number;
   isVerified: boolean;
+  isPublished?: boolean;
+}
+
+export type PendingCoachStatus = "pending" | "approved" | "rejected";
+
+export interface PendingCoach {
+  uid: string;
+  email: string;
+  realName: string;
+  city: string;
+  phone: string;
+  birthday: string;
+  nickname: string;
+  ntrpRange: string;
+  pricePerHour: number;
+  bio: string;
+  idFrontUrl?: string;
+  idFrontPath?: string;
+  idBackUrl?: string;
+  idBackPath?: string;
+  status: PendingCoachStatus;
+  rejectionReason?: string;
+  linkedCoachId?: string;
+  submittedAt?: Date;
+  reviewedAt?: Date;
+  reviewedBy?: string;
 }
 
 export interface StudentPost extends BaseDocument {

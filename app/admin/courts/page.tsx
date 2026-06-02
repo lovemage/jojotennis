@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
+import CourtImagesAdminPanel from "@/components/CourtImagesAdminPanel";
 import { useApp } from "@/context/AppContext";
 import { subscribeToCourts, saveCourt, softDeleteCourt, type CourtFormInput } from "@/lib/courtService";
 import { taiwanCities } from "@/data/cities";
@@ -249,7 +250,7 @@ export default function AdminCourtsPage() {
             />
           </div>
           <button type="submit" className="w-full rounded-full bg-clay px-4 py-3 text-sm font-bold text-white">
-            新增至 Firestore
+            新增球場
           </button>
         </form>
 
@@ -265,6 +266,7 @@ export default function AdminCourtsPage() {
               {court.weekdayHours ? (
                 <p className="mt-1 text-xs text-muted">開放：{court.weekdayHours}</p>
               ) : null}
+              <CourtImagesAdminPanel courtId={court.id} />
               <button
                 type="button"
                 onClick={() => {

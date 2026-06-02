@@ -7,6 +7,7 @@ type AuthUser = {
   nickname: string;
   ntrp: string;
   region: string;
+  avatarUrl?: string;
   role?: string;
 } | null;
 

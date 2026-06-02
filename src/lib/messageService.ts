@@ -15,6 +15,7 @@ import {
   arrayUnion,
   arrayRemove,
   deleteDoc,
+  increment,
 } from "firebase/firestore";
 import type { Conversation, Message } from "./schema";
 
@@ -98,11 +99,39 @@ export async function sendMessage(
     readBy: [senderUid],
     createdAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, "conversations", convId), {
+
+  const convRef = doc(db, "conversations", convId);
+  const convSnap = await getDoc(convRef);
+  const participants = (convSnap.data()?.participants as string[] | undefined) ?? [];
+  const updates: Record<string, unknown> = {
     lastMessage: t.slice(0, 50),
     lastSenderNickname: senderNickname,
+    lastMessageTime: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+  for (const uid of participants) {
+    if (uid && uid !== senderUid) {
+      updates[`unreadByUid.${uid}`] = increment(1);
+    }
+  }
+  await updateDoc(convRef, updates);
+
+  void (async () => {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+      await fetch("/api/notify/message-to-coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ convId, senderUid }),
+      });
+    } catch (err) {
+      console.warn("[message-to-coach] 通知失敗：", err);
+    }
+  })();
 }
 
 export async function sendSystemMessage(convId: string, content: string): Promise<void> {
@@ -145,6 +174,10 @@ export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) =>
 
 /** 將聊天室中他人訊息標記為已讀 */
 export async function markConversationMessagesRead(convId: string, uid: string): Promise<void> {
+  await updateDoc(doc(db, "conversations", convId), {
+    [`unreadByUid.${uid}`]: 0,
+  }).catch(() => undefined);
+
   const snap = await getDocs(collection(db, "conversations", convId, "messages"));
   const updates = snap.docs.filter((d) => {
     const data = d.data();

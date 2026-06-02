@@ -30,11 +30,13 @@ export default function NewsDetailPage() {
 
   return (
     <article className="mx-auto max-w-md px-6 py-10">
-      <img
-        src={article.coverImage}
-        alt={article.title}
-        className="aspect-video w-full rounded-[1.5rem] object-cover"
-      />
+      {article.coverImage ? (
+        <img
+          src={article.coverImage}
+          alt={article.title}
+          className="aspect-video w-full rounded-[1.5rem] object-cover"
+        />
+      ) : null}
       <div className="mt-5">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-clay px-3 py-1 text-xs font-bold text-white">
@@ -46,9 +48,10 @@ export default function NewsDetailPage() {
         <p className="mt-3 text-sm text-muted">作者：{article.author}</p>
       </div>
 
-      <div className="mt-6 rounded-[1.5rem] bg-white p-5 text-base leading-8 text-ink shadow-sm ring-1 ring-parchment">
-        {article.content}
-      </div>
+      <div
+        className="prose-news mt-6 rounded-[1.5rem] bg-white p-5 text-base leading-8 text-ink shadow-sm ring-1 ring-parchment"
+        dangerouslySetInnerHTML={{ __html: article.content }}
+      />
 
       <section className="mt-8">
         <h2 className="text-xl font-bold text-pine">更多新聞</h2>

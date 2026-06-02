@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { Court } from "@/data/courts";
 import { taiwanCities } from "@/data/cities";
 import { useApp } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
+import CourtsMap from "@/components/CourtsMap";
 
 type CourtsExplorerProps = {
   courts: Court[];
@@ -21,6 +23,7 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
   const [environment, setEnvironment] = useState(allEnvironmentsLabel);
   const [surface, setSurface] = useState(allSurfacesLabel);
   const [lightingOnly, setLightingOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [reportStatus, setReportStatus] = useState("");
@@ -233,7 +236,24 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
       </div>
 
       <div className="mt-6 space-y-3">
-        {filteredCourts.map((court) => (
+        <div className="grid grid-cols-2 gap-2">
+          {(["list", "map"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              className={`h-10 rounded-lg text-sm font-bold ${
+                viewMode === mode ? "bg-pine text-white" : "bg-ivory text-pine"
+              }`}
+            >
+              {mode === "list" ? "列表" : "地圖"}
+            </button>
+          ))}
+        </div>
+
+        {viewMode === "map" ? <CourtsMap courts={filteredCourts} /> : null}
+
+        {viewMode === "list" ? filteredCourts.map((court) => (
           <article
             key={court.id}
             className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm"
@@ -284,6 +304,12 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
               {court.notes ? <p>備註：{court.notes}</p> : null}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
+              <Link
+                href={`/court/${court.id}`}
+                className="col-span-2 flex h-11 items-center justify-center rounded-lg bg-pine text-sm font-bold text-white"
+              >
+                查看球場詳情
+              </Link>
               {court.latitude != null && court.longitude != null && court.latitude !== 0 ? (
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${court.latitude},${court.longitude}`}
@@ -329,7 +355,7 @@ export default function CourtsExplorer({ courts = [] }: CourtsExplorerProps) {
               )}
             </div>
           </article>
-        ))}
+        )) : null}
       </div>
       {isReportOpen ? (
         <div className="fixed inset-0 z-50 bg-ink/40" onClick={() => setIsReportOpen(false)}>

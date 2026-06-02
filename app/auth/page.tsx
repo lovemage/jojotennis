@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
+import { loginWithLineCustomToken } from "@/lib/authService";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { login, register, loginWithGoogle } = useApp();
+  const { login, register, loginWithGoogle, accountDisabledMessage, clearAccountDisabledMessage } = useApp();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
@@ -16,6 +17,14 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [registrationSuccessName, setRegistrationSuccessName] = useState("");
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("lineToken");
+    if (!token) return;
+    loginWithLineCustomToken(token)
+      .then(() => router.push("/"))
+      .catch((err) => setError(err instanceof Error ? err.message : "LINE 登入失敗"));
+  }, [router]);
 
   async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -176,6 +185,19 @@ export default function AuthPage() {
           />
         ) : null}
 
+        {accountDisabledMessage ? (
+          <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">
+            <p>{accountDisabledMessage}</p>
+            <button
+              type="button"
+              onClick={clearAccountDisabledMessage}
+              className="mt-2 text-xs font-bold text-red-600 underline"
+            >
+              關閉
+            </button>
+          </div>
+        ) : null}
+
         {error ? (
           <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
             {error}
@@ -202,6 +224,13 @@ export default function AuthPage() {
         >
           {tab === "login" ? "使用 Google 登入" : "使用 Google 快速註冊"}
         </button>
+
+        <a
+          href="/api/auth/line/login"
+          className="flex w-full items-center justify-center rounded-full bg-[#06C755] px-5 py-3 text-sm font-bold text-white"
+        >
+          使用 LINE 登入
+        </a>
 
         <p className="text-center text-sm text-muted">
           {tab === "login" ? "還沒有帳號？" : "已有帳號？"}{" "}

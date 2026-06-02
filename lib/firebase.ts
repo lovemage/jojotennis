@@ -1,7 +1,7 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,10 +12,20 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+// Only initialize Firebase in the browser
+let app: FirebaseApp | undefined;
+let auth = undefined as unknown as Auth;
+let db = undefined as unknown as Firestore;
+let storage = undefined as unknown as FirebaseStorage;
+let googleProvider = undefined as unknown as GoogleAuthProvider;
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const googleProvider = new GoogleAuthProvider();
+if (typeof window !== "undefined") {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+  googleProvider = new GoogleAuthProvider();
+}
+
+export { auth, db, storage, googleProvider };
 export default app;

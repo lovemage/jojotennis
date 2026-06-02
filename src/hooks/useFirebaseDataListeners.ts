@@ -7,10 +7,10 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { subscribeToConversations, subscribeToMessages } from "@/lib/messageService";
+import { subscribeToConversations } from "@/lib/messageService";
 import { subscribeToNews } from "@/lib/newsService";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
-import { toMillis, toUiUser, toChatMessage } from "@/lib/mappers";
+import { toMillis, toUiUser } from "@/lib/mappers";
 import type {
   Match as SchemaMatch,
   MatchApplication,
@@ -267,14 +267,14 @@ export function useFirebaseInboxListener(
   }, [enabled, userUid, setMessages]);
 }
 
-/** conversations + subcollection messages */
+/** conversations metadata only (no per-message subs — those are lazy on the messages page) */
 export function useFirebaseConversationListeners(
   enabled: boolean,
   userUid: string | undefined,
   isAdmin: boolean,
-  messageUnsubs: MutableRefObject<Record<string, () => void>>,
+  _messageUnsubs: MutableRefObject<Record<string, () => void>>,
   setConvMeta: (fn: (prev: ConvMeta) => ConvMeta) => void,
-  setConvMessages: (fn: (prev: Record<string, ChatMessage[]>) => Record<string, ChatMessage[]>) => void,
+  _setConvMessages: (fn: (prev: Record<string, ChatMessage[]>) => Record<string, ChatMessage[]>) => void,
 ) {
   useEffect(() => {
     if (!enabled || !db) return;
@@ -288,16 +288,6 @@ export function useFirebaseConversationListeners(
           nextMeta[item.convId] = { ...item };
         }
         setConvMeta((prev) => ({ ...prev, ...nextMeta }));
-
-        for (const id of Object.keys(nextMeta)) {
-          if (messageUnsubs.current[id]) continue;
-          messageUnsubs.current[id] = subscribeToMessages(id, (msgs) => {
-            setConvMessages((prev) => ({
-              ...prev,
-              [id]: msgs.map((m) => toChatMessage(m)),
-            }));
-          });
-        }
       });
     }
 
@@ -317,14 +307,6 @@ export function useFirebaseConversationListeners(
           const nextMeta: ConvMeta = {};
           for (const row of rows) {
             nextMeta[row.id] = row.data;
-            if (!messageUnsubs.current[row.id]) {
-              messageUnsubs.current[row.id] = subscribeToMessages(row.id, (msgs) => {
-                setConvMessages((prev) => ({
-                  ...prev,
-                  [row.id]: msgs.map((m) => toChatMessage(m)),
-                }));
-              });
-            }
           }
           setConvMeta((prev) => ({ ...prev, ...nextMeta }));
         },
@@ -336,5 +318,5 @@ export function useFirebaseConversationListeners(
       unsubConversations();
       adminUnsub();
     };
-  }, [enabled, userUid, isAdmin, messageUnsubs, setConvMeta, setConvMessages]);
+  }, [enabled, userUid, isAdmin, setConvMeta]);
 }

@@ -103,7 +103,8 @@ export default function AdminTestPage() {
           <p className="font-semibold text-pine">測試帳號</p>
           <p className="mt-2">A：test@jojo.tw / test1234</p>
           <p>B：beginner@jojo.tw / begin1234</p>
-          <p>管理員：sasabrinalu@gmail.com 或 adminUsers 授權 Email</p>
+          <p>管理員：test@gmail.com / test123</p>
+          <p className="mt-1">或 sasabrinalu@gmail.com / adminUsers 授權 Email</p>
         </div>
 
         <ol className="mt-6 space-y-3">

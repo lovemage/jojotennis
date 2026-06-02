@@ -1,7 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { AppProvider } from "@/context/AppContext";
+import AnnouncementMarquee from "@/components/AnnouncementMarquee";
 import HeaderStatus from "@/components/HeaderStatus";
+import InstallPrompt from "@/components/InstallPrompt";
+import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -26,6 +30,11 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   manifest: "/site.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "JoJo Tennis",
+    statusBarStyle: "default",
+  },
   openGraph: {
     title: "揪揪網球｜找球友・找球場・台灣網球社群",
     description: "搜尋全台 40+ 網球場地，媒合球友，找教練，加入社團。",
@@ -34,6 +43,10 @@ export const metadata: Metadata = {
     locale: "zh_TW",
     type: "website",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1E3D2F",
 };
 
 export default function RootLayout({
@@ -47,8 +60,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-ivory text-ink antialiased`}
       >
         <AppProvider>
+          <AnnouncementMarquee />
           <HeaderStatus />
-          {children}
+          <main className="min-h-screen">{children}</main>
+          <SiteFooter />
+          <Navbar />
+          <InstallPrompt />
         </AppProvider>
       </body>
     </html>

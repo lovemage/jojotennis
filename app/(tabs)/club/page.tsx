@@ -1,5 +1,5 @@
-import ClubPageClient from "@/components/ClubPageClient";
+import { redirect } from "next/navigation";
 
 export default function ClubPage() {
-  return <ClubPageClient />;
+  redirect("/reviews");
 }

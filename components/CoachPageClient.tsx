@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PageHero from "@/components/PageHero";
 import CoachTabs from "@/components/CoachTabs";
 import { coaches as seedCoaches } from "@/data/coaches";
@@ -18,6 +18,7 @@ type FirestoreCoach = {
   rating?: number;
   bio?: string;
   isDeleted?: boolean;
+  isPublished?: boolean;
 };
 
 function toStudentNeed(post: Record<string, unknown> & { postId: string }): StudentNeed {
@@ -47,7 +48,7 @@ export default function CoachPageClient() {
       (snap) => {
         const rows = snap.docs
           .map((d) => ({ coachId: d.id, ...d.data() }) as FirestoreCoach)
-          .filter((c) => c.isDeleted !== true)
+          .filter((c) => c.isDeleted !== true && c.isPublished !== false)
           .map((c) => ({
             id: c.coachId,
             name: c.nickname ?? "教練",
@@ -109,28 +110,53 @@ export default function CoachPageClient() {
     status: "active",
   }));
 
+  const [activeTab, setActiveTab] = useState<"coaches" | "students">("coaches");
+  const heroTabs = useMemo(
+    () => [
+      { id: "coaches" as const, label: "找教練" },
+      { id: "students" as const, label: "找學生" },
+    ],
+    [],
+  );
+
   return (
-    <section className="mx-auto max-w-md px-6 py-10">
+    <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
         eyebrow="Coach"
         title="找到屬於你的網球教練"
         description="依等級、地區、費用篩選，直接透過站內私訊聯繫教練"
-      />
+        image="/images/hero/coach.png"
+      >
+        <div className="grid grid-cols-2 gap-3">
+          {heroTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-full px-4 py-3 text-sm font-bold transition ${
+                activeTab === tab.id
+                  ? "bg-gold text-pine shadow-[0_12px_28px_rgba(201,168,76,0.25)]"
+                  : "border border-white/25 bg-white/10 text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </PageHero>
       {loadingCoaches || loadingPosts ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            minHeight: "200px",
-            color: "#8A7E6E",
-            fontSize: "14px",
-          }}
-        >
+        <div className="flex min-h-[200px] items-center justify-center text-sm text-muted">
           載入中...
         </div>
       ) : (
-        <CoachTabs coaches={coaches} studentNeeds={studentNeedsForTabs} />
+        <div className="mt-6 px-5">
+          <CoachTabs
+            coaches={coaches}
+            studentNeeds={studentNeedsForTabs}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+        </div>
       )}
     </section>
   );

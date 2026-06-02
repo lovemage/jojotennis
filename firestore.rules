@@ -1,9 +1,102 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
+
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    function isAdmin() {
+      return isSignedIn()
+        && (
+          request.auth.token.email.lower() in ['sasabrinalu@gmail.com', 'test@gmail.com']
+          || exists(/databases/$(database)/documents/adminUsers/$(request.auth.token.email.lower()))
+        );
+    }
+
+    // 公告
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 隱私權／服務條款（公開讀，僅管理員可寫）
+    match /legal_pages/{slug} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 教練申請：本人可建立／更新自己的申請；本人或管理員可讀；僅管理員可改狀態
+    match /pending_coaches/{uid} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isSignedIn() && request.auth.uid == uid
+                    && request.resource.data.status == 'pending';
+      allow update: if isAdmin()
+                    || (
+                      isSignedIn() && request.auth.uid == uid
+                      && resource.data.status != 'approved'
+                      && request.resource.data.status == 'pending'
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // Email 模板
+    match /email_templates/{key} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 管理員清單
+    match /adminUsers/{email} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 使用者：本人或管理員可寫；本人不能修改受保護欄位
+    match /users/{uid} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == uid
+        && !(request.resource.data.diff(resource.data).changedKeys()
+              .hasAny(['isActive', 'nicknameChangesUsed', 'role']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Email 寄送紀錄（伺服器端寫入，前端不可寫）
+    match /email_log/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // 對話：登入即可讀寫（成員制目前在程式層控制）
+    match /conversations/{convId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 一般業務集合：登入可讀寫（與原本行為一致，等後續逐個收緊）
+    match /matches/{id}             { allow read: if true; allow write: if isSignedIn(); }
+    match /match_applications/{id}  { allow read: if true; allow write: if isSignedIn(); }
+    match /match_attendance_obligations/{id} { allow read: if true; allow write: if isSignedIn(); }
+    match /clubs/{id}               { allow read: if true; allow write: if isSignedIn(); }
+    match /club_members/{id}        { allow read: if true; allow write: if isSignedIn(); }
+    match /courts/{id}              { allow read: if true; allow write: if isSignedIn(); }
+    match /pending_courts/{id}      { allow read: if true; allow write: if isSignedIn(); }
+    match /coaches/{id}             { allow read: if true; allow write: if isSignedIn(); }
+    match /student_posts/{id}       { allow read: if true; allow write: if isSignedIn(); }
+    match /news/{id}                { allow read: if true; allow write: if isSignedIn(); }
+    match /messages/{id}            { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+    match /inboxMessages/{id}       { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+    match /heartRecords/{id}        { allow read: if true; allow write: if isSignedIn(); }
+    match /landing_settings/{id}    { allow read: if true; allow write: if isAdmin(); }
   }
 }

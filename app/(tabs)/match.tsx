@@ -135,7 +135,7 @@ export default function MatchScreen() {
   }, [applied]);
 
   const saveFilter = useCallback(() => {
-    let next = cloneFilters(draft);
+    const next = cloneFilters(draft);
     if (next.ntrpMin > next.ntrpMax) {
       const t = next.ntrpMin;
       next.ntrpMin = next.ntrpMax;

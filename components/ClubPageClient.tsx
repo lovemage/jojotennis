@@ -34,12 +34,15 @@ export default function ClubPageClient() {
   }, []);
 
   return (
-    <section className="mx-auto max-w-md px-6 py-10">
+    <section className="mx-auto max-w-md overflow-hidden pb-8">
       <PageHero
+        eyebrow="Clubs"
         title="社團"
         description="探索地區社團、固定團練與球隊資訊，找到長期一起打球的夥伴。"
       />
-      <ClubExplorer clubs={clubs} />
+      <div className="mt-6 px-5">
+        <ClubExplorer clubs={clubs} />
+      </div>
     </section>
   );
 }

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <rect width="1200" height="675" fill="#1e3d2f"/>
+  <path d="M0 0h1200v675H0z" fill="#f7f2eb" opacity=".1"/>
+  <path d="M120 510c170-180 315-200 500-125 198 80 356 28 500-155" fill="none" stroke="#c9a84c" stroke-width="36" stroke-linecap="round" opacity=".8"/>
+  <path d="M160 540c160-156 300-169 470-100 184 75 330 28 460-132" fill="none" stroke="#f7f2eb" stroke-width="8" stroke-linecap="round" opacity=".88"/>
+  <g transform="translate(425 115)">
+    <circle cx="175" cy="175" r="142" fill="#f7f2eb"/>
+    <circle cx="175" cy="175" r="110" fill="#d8e95f"/>
+    <path d="M84 84c69 25 118 76 146 153M268 266c-69-25-118-76-146-153" fill="none" stroke="#1e3d2f" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <g stroke="#f7f2eb" stroke-width="12" stroke-linecap="round" opacity=".7">
+    <path d="M760 124l210 330"/>
+    <path d="M820 116l210 330"/>
+    <path d="M880 108l210 330"/>
+  </g>
+  <text x="70" y="105" fill="#c9a84c" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">STRING PERFORMANCE</text>
+  <text x="70" y="572" fill="#f7f2eb" font-family="Arial, sans-serif" font-size="58" font-weight="900">Spin String Review</text>
+</svg>

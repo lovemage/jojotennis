@@ -12,11 +12,22 @@ import {
   transferMatchOwnership,
 } from "@/lib/matchService";
 import { giveHeart } from "@/lib/heartService";
+import MatchReviewBanner from "@/components/MatchReviewBanner";
 import { isWithin24Hours } from "@/lib/timeUtils";
 import { db } from "@/lib/firebase";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { toUiMatch } from "@/lib/mappers";
 import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
+
+function isMatchExpired(match: Match): boolean {
+  if (!match.date || !match.endTime) return false;
+  const [y, mo, d] = match.date.split(/[\/\-]/).map((n) => Number.parseInt(n, 10));
+  const [h, mi] = match.endTime.split(":").map((n) => Number.parseInt(n, 10));
+  if (!y || !mo || !d) return false;
+  const end = new Date(y, mo - 1, d, h || 0, mi || 0).getTime();
+  if (Number.isNaN(end)) return false;
+  return Date.now() > end;
+}
 
 export default function MatchDetailPage() {
   const params = useParams<{ id: string }>();
@@ -105,8 +116,10 @@ export default function MatchDetailPage() {
 
   const isOwner = user?.uid === match.ownerUid;
   const within24 = isWithin24Hours(match.date, match.startTime);
+  const isExpired = isMatchExpired(match);
   const isFull = match.filledSlots >= match.totalSlots;
   const isCancelled = Boolean(match.isDeleted);
+  const isClosed = isCancelled || isExpired || match.status === "closed";
   const transferable = applications.filter(
     (app) => app.status === "accepted" && !app.isDeleted && app.applicantUid !== user?.uid,
   );
@@ -162,11 +175,14 @@ export default function MatchDetailPage() {
 
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
+      <MatchReviewBanner match={match} user={user} />
+
       <ActionButtons
         user={user}
         match={match}
         isOwner={isOwner}
         isCancelled={isCancelled}
+        isClosed={isClosed}
         isFull={isFull}
         within24={within24}
         myApp={myApp}
@@ -273,12 +289,18 @@ export default function MatchDetailPage() {
         </ul>
       </div>
 
-      <Link
-        href={`/messages?conversation=match_${match.id}`}
-        className="mt-6 block rounded-full border border-pine px-5 py-3 text-center text-sm font-bold text-pine"
-      >
-        進入球局聊天室
-      </Link>
+      {isClosed ? (
+        <p className="mt-6 rounded-full border border-parchment bg-parchment/60 px-5 py-3 text-center text-sm font-bold text-muted">
+          球局已結束，聊天室已關閉
+        </p>
+      ) : (
+        <Link
+          href={`/messages?conversation=match_${match.id}&from=match`}
+          className="mt-6 block rounded-full border border-pine px-5 py-3 text-center text-sm font-bold text-pine"
+        >
+          進入球局聊天室
+        </Link>
+      )}
     </section>
   );
 }
@@ -288,6 +310,7 @@ function ActionButtons({
   match,
   isOwner,
   isCancelled,
+  isClosed,
   isFull,
   within24,
   myApp,
@@ -305,6 +328,7 @@ function ActionButtons({
   match: Match;
   isOwner: boolean;
   isCancelled: boolean;
+  isClosed: boolean;
   isFull: boolean;
   within24: boolean;
   myApp?: MatchApplication;
@@ -331,6 +355,10 @@ function ActionButtons({
 
   if (isCancelled) {
     return <p className="mt-6 text-sm text-muted">球局已取消</p>;
+  }
+
+  if (isClosed) {
+    return <p className="mt-6 text-sm text-muted">球局已結束</p>;
   }
 
   if (isOwner) {

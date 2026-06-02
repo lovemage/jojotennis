@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
 import { useApp, type User } from "@/context/AppContext";
-import { fetchUsersPage, updateUserAdminFields, type AdminUserRow } from "@/lib/userService";
+import {
+  fetchUsersPage,
+  updateUserAdminFields,
+  adminResetNicknameChanges,
+  adminSetUserActive,
+  type AdminUserRow,
+} from "@/lib/userService";
+import { USE_FIREBASE } from "@/lib/config";
 import type { QueryDocumentSnapshot } from "firebase/firestore";
 
 const PAGE_SIZE = 20;
-const USE_FIREBASE = process.env.NEXT_PUBLIC_USE_FIREBASE === "true";
 
 export default function AdminUsersPage() {
   const { users: contextUsers, updateUserByAdmin } = useApp();
@@ -89,12 +95,23 @@ export default function AdminUsersPage() {
   async function toggleActive(member: User | AdminUserRow) {
     const nextActive = draftFor(member).isActive === false;
     if (USE_FIREBASE) {
-      await updateUserAdminFields(member.uid, { isActive: nextActive });
+      await adminSetUserActive(member.uid, nextActive);
       setPageUsers((prev) =>
         prev.map((u) => (u.uid === member.uid ? { ...u, isActive: nextActive } : u)),
       );
     } else {
       updateUserByAdmin(member.uid, { isActive: nextActive });
+    }
+  }
+
+  async function resetNicknameChanges(member: User | AdminUserRow) {
+    await adminResetNicknameChanges(member.uid);
+    if (USE_FIREBASE) {
+      setPageUsers((prev) =>
+        prev.map((u) => (u.uid === member.uid ? { ...u, nicknameChangesUsed: 0 } : u)),
+      );
+    } else {
+      updateUserByAdmin(member.uid, { nicknameChangesUsed: 0 });
     }
   }
 
@@ -190,6 +207,10 @@ export default function AdminUsersPage() {
                   />
                 </div>
 
+                <p className="mt-3 text-xs text-muted">
+                  暱稱已更改 {("nicknameChangesUsed" in member ? member.nicknameChangesUsed : 0) ?? 0} / 3 次
+                </p>
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -207,7 +228,14 @@ export default function AdminUsersPage() {
                         : "border-green-600 text-green-700"
                     }`}
                   >
-                    {draft.isActive !== false ? "停權" : "復權"}
+                    {draft.isActive !== false ? "停用" : "啟用"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void resetNicknameChanges(member)}
+                    className="rounded-full border border-pine px-4 py-2 text-xs font-bold text-pine"
+                  >
+                    重置暱稱次數
                   </button>
                 </div>
               </article>

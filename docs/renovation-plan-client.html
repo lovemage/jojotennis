@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JoJo Tennis 第一階段改造計畫｜給 Sabrina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@500;600;700&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F9F8F6;
+    --bg-warm:#F6F5F2;
+    --linen:#E5E0D8;
+    --sage:#9A9F8C;
+    --charcoal:#4A4540;
+    --ink:#333333;
+    --muted:#777777;
+    --line:#DDDDDD;
+    --warm:#C08552;
+    --serif:'Noto Serif TC',"Source Han Serif",serif;
+    --sans:'Noto Sans TC',"Source Han Sans","PingFang TC",sans-serif;
+    --mono:'Montserrat',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);font-weight:400;line-height:1.8;
+    font-size:16px;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px;}
+
+  header.cover{
+    background:linear-gradient(180deg,var(--linen) 0%,var(--bg) 100%);
+    padding:88px 0 64px;border-bottom:1px solid var(--line);
+  }
+  .eyebrow{font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    font-size:12px;color:var(--sage);margin:0 0 18px;font-weight:500;}
+  h1.title{font-family:var(--serif);font-weight:700;color:var(--charcoal);
+    font-size:42px;line-height:1.3;letter-spacing:.03em;margin:0 0 16px;}
+  .subtitle{font-family:var(--serif);font-size:20px;color:var(--charcoal);margin:0 0 28px;font-weight:500;}
+  .greet{font-size:16px;color:var(--charcoal);margin:0 0 28px;}
+  .meta{font-size:14px;color:var(--muted);border-top:1px dashed var(--line);
+    padding-top:18px;display:flex;flex-wrap:wrap;gap:8px 28px;}
+  .meta b{color:var(--ink);font-weight:500;}
+
+  nav.toc{background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:24px 28px;margin:40px 0;}
+  nav.toc h2{font-family:var(--serif);font-size:18px;color:var(--charcoal);margin:0 0 14px;}
+  nav.toc ol{margin:0;padding-left:20px;columns:2;column-gap:36px;}
+  nav.toc li{margin:6px 0;break-inside:avoid;}
+  nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent;}
+  nav.toc a:hover{border-bottom-color:var(--sage);color:var(--charcoal);}
+
+  section{padding:30px 0;border-top:1px solid var(--line);}
+  section:first-of-type{border-top:none;}
+  h2.sec{font-family:var(--serif);font-weight:600;color:var(--charcoal);
+    font-size:26px;letter-spacing:.04em;margin:0 0 8px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+  h2.sec .num{font-family:var(--mono);font-size:15px;color:var(--sage);font-weight:500;}
+  h3{font-family:var(--serif);font-weight:600;color:var(--charcoal);font-size:19px;
+    margin:30px 0 10px;}
+  h4{font-family:var(--sans);font-weight:700;color:var(--charcoal);font-size:16px;margin:20px 0 8px;}
+  p{margin:10px 0;}
+  .lead{font-size:17px;color:var(--charcoal);}
+  ul,ol{margin:10px 0;padding-left:22px;}
+  li{margin:5px 0;}
+  small,.note-inline{color:var(--muted);font-size:14px;}
+  strong{font-weight:700;color:var(--charcoal);}
+  a{color:var(--charcoal);text-decoration:underline;text-underline-offset:3px;
+    text-decoration-color:var(--sage);}
+  a:hover{text-decoration-color:var(--charcoal);}
+  code{font-family:var(--mono);font-size:13px;background:var(--bg-warm);
+    padding:1px 6px;border:1px solid var(--line);border-radius:3px;color:var(--charcoal);}
+
+  .callout{border-left:4px solid var(--sage);background:#fff;border-radius:0 8px 8px 0;
+    padding:16px 22px;margin:18px 0;}
+  .callout.key{border-left-color:var(--charcoal);background:var(--bg-warm);}
+  .callout.warn{border-left-color:var(--warm);background:#FBF6F0;}
+  .callout h4{margin-top:0;}
+  .callout p:last-child{margin-bottom:0;}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;background:#fff;
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:15px;}
+  th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{background:var(--linen);color:var(--charcoal);font-weight:500;font-family:var(--serif);}
+  tr:last-child td{border-bottom:none;}
+  td.num{font-family:var(--mono);}
+
+  .badge{display:inline-block;font-size:12px;font-family:var(--mono);color:var(--sage);
+    border:1px solid var(--line);border-radius:20px;padding:1px 10px;margin-left:8px;}
+  .badge.solid{background:var(--charcoal);color:#fff;border-color:var(--charcoal);}
+  .badge.warm{color:var(--warm);border-color:var(--warm);}
+  .badge.sage{background:var(--sage);color:#fff;border-color:var(--sage);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:16px 0;}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px 22px;}
+  .panel.good{border-top:3px solid var(--sage);}
+  .panel.warm{border-top:3px solid var(--warm);}
+  .panel.charcoal{border-top:3px solid var(--charcoal);}
+  .panel h3{margin-top:0;}
+  .panel h4{margin-top:18px;}
+
+  .feature-list{counter-reset:f;list-style:none;padding-left:0;}
+  .feature-list li{counter-increment:f;position:relative;padding:14px 20px 14px 60px;
+    margin:10px 0;background:#fff;border:1px solid var(--line);border-radius:8px;}
+  .feature-list li::before{content:counter(f,decimal-leading-zero);position:absolute;
+    left:18px;top:14px;font-family:var(--mono);font-size:14px;color:var(--sage);
+    font-weight:500;letter-spacing:.05em;}
+  .feature-list li strong{display:block;margin-bottom:4px;color:var(--charcoal);
+    font-family:var(--serif);font-size:16px;}
+
+  .checks{counter-reset:c;list-style:none;padding-left:0;}
+  .checks li{counter-increment:c;position:relative;padding-left:40px;margin:10px 0;}
+  .checks li::before{content:counter(c);position:absolute;left:0;top:1px;width:26px;height:26px;
+    background:var(--charcoal);color:#fff;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-family:var(--mono);font-size:13px;}
+
+  .total{background:var(--bg-warm);border:1px solid var(--line);border-radius:10px;
+    padding:24px 28px;margin:20px 0;}
+  .total h3{margin-top:0;}
+
+  footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--muted);font-size:13px;}
+
+  @media (max-width:720px){
+    h1.title{font-size:32px;}
+    nav.toc ol{columns:1;}
+    .grid2{grid-template-columns:1fr;}
+    .wrap{padding:0 18px;}
+    th,td{padding:10px 12px;font-size:14px;}
+  }
+  @page{
+    size:A4;
+    margin:18mm 16mm;
+  }
+  @media print{
+    body{background:#fff;font-size:13px;line-height:1.7;}
+    .wrap{padding:0;max-width:100%;}
+    header.cover{padding:0 0 24px;background:#fff;border-bottom:2px solid var(--charcoal);
+      break-after:avoid-page;}
+    header.cover .wrap{padding:0;}
+    h1.title{font-size:30px;}
+    .subtitle{font-size:16px;}
+    section{padding:18px 0;break-inside:avoid-page;}
+    section:first-of-type{padding-top:24px;}
+    h2.sec{font-size:21px;break-after:avoid-page;}
+    h3{break-after:avoid-page;font-size:16px;}
+    h4{break-after:avoid-page;}
+    table{break-inside:auto;font-size:12px;}
+    thead{display:table-header-group;}
+    tr,td,th{break-inside:avoid-page;}
+    .callout,.panel,.feature-list li{break-inside:avoid-page;}
+    .grid2{display:block;}
+    .grid2>*{margin-bottom:12px;}
+    a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--muted);}
+    code{background:var(--bg-warm);border:1px solid var(--line);}
+    footer{break-before:avoid-page;}
+  }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="wrap">
+    <p class="eyebrow">Phase 1 · Renovation Plan</p>
+    <h1 class="title">JoJo Tennis 第一階段改造計畫</h1>
+    <p class="subtitle">資料庫升級・PWA・推播通知・球場地圖・球具評測・LINE 登入・約打評論</p>
+    <p class="greet">Hi Sabrina，這是 05/27 會議後整理的執行版本，請過目。</p>
+    <div class="meta">
+      <span><b>日期：</b>2026/05/30</span>
+      <span><b>單號：</b>JOJO-2026-0525-01</span>
+      <span><b>對應會議：</b>2026/05/27 討論會議</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="callout key">
+    <h4>服務模式｜半自助開發服務（Dev 折扣價）</h4>
+    <p>本案因規模屬小型專案，已套用工作室 <strong>Dev 折扣價</strong>，採用「<strong>半自助開發服務</strong>」模式承接。<strong>三方服務的申請與後台設定由 Sabrina 自行處理</strong>，工作室提供完整圖文教學引導，並在收到 API key 後負責所有開發整合工作。完整服務模式說明：<a href="https://oceanads.org/self-service-apply.html" target="_blank" rel="noopener">oceanads.org/self-service-apply.html</a></p>
+  </div>
+
+  <!-- 1 -->
+  <section id="s1">
+    <h2 class="sec"><span class="num">01</span>本期會做的事</h2>
+    <p class="lead">承接 05/27 會議結論，本期共九項改造，目標是讓網站<strong>資料更穩、未來好擴充</strong>，並補上球場、社群、會員體驗的關鍵缺口。</p>
+
+    <ol>
+      <li>導入正式資料庫（Supabase）</li>
+      <li>球場 Google 地圖</li>
+      <li>球場圖片輪播（Cloudinary）</li>
+      <li>球具評測（內容部落格，詳見 §2）</li>
+      <li>LINE 一鍵登入</li>
+      <li>PWA</li>
+      <li>推播通知（詳見 §4）</li>
+      <li>約打評論系統（詳見 §3）</li>
+      <li>Email 通知（詳見 §4）</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2">
+    <h2 class="sec"><span class="num">02</span>球具評測（球具部落格）功能</h2>
+    <p class="lead">05/27 會議決定：原「社團 / 討論區」流量起不來，改為由<strong>站方或編輯</strong>定期發佈的<strong>球具評測內容頁</strong>，會員不需貼文，類似一個品牌部落格，對 SEO 與會員留存友善。</p>
+
+    <h3>內容類型與欄位</h3>
+    <table>
+      <thead><tr><th style="width:24%">欄位</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>分類</strong></td><td>球拍 / 網球線 / 球鞋 / 握把（後台可調整）</td></tr>
+        <tr><td><strong>標題、品牌、型號</strong></td><td>例：「Wilson Pro Staff v15 — 進階控制型球拍」</td></tr>
+        <tr><td><strong>封面圖</strong></td><td>產品照或開箱情境，自動透過 Cloudinary 派送多尺寸</td></tr>
+        <tr><td><strong>本文</strong></td><td>支援圖文混排（Markdown），內文配圖同樣走 Cloudinary</td></tr>
+        <tr><td><strong>狀態</strong></td><td>草稿 / 已發佈，可排程發佈</td></tr>
+        <tr><td><strong>網址</strong></td><td>每篇獨立網址（例：<code>/reviews/wilson-pro-staff-v15</code>），SEO 友善</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Sabrina（或編輯）能做什麼</h3>
+    <ul>
+      <li>進 <code>/admin/reviews</code> 後台撰寫、編輯、預覽、發佈文章。</li>
+      <li>上傳封面與內文配圖（含拖放上傳、自動壓縮、多檔批次）。</li>
+      <li>設定分類、品牌、型號，方便會員從前台分類過濾。</li>
+      <li>排程未來時間發佈（適合內容檔期管理）。</li>
+    </ul>
+
+    <div class="callout">
+      <h4>會員能做什麼</h4>
+      <ul>
+        <li>瀏覽 <code>/reviews</code> 列表頁，可依分類（拍/線/鞋/握把）過濾。</li>
+        <li>閱讀單篇詳細頁，支援收藏、社群分享。</li>
+        <li><strong>本期不開放會員自行貼文</strong>，避免討論區內容失控；未來如需開放可另行擴充。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3">
+    <h2 class="sec"><span class="num">03</span>約打評論系統｜會員信譽機制</h2>
+    <p class="lead">每個約打日期過後，<strong>host 與 player 互相評分</strong>，建立「參加率」與「履約率」指標。避免放鳥行為、提升 community 品質，是這次改造的核心信任建立機制。</p>
+
+    <h3>雙向評分流程</h3>
+    <div class="grid2">
+      <div class="panel good">
+        <h4>Host 評 Player</h4>
+        <ul>
+          <li>是否出席：<strong>有到 / 沒到 / 請假</strong>（三選一）</li>
+          <li>星等：1–5 星</li>
+          <li>可選評論文字</li>
+        </ul>
+      </div>
+      <div class="panel charcoal">
+        <h4>Player 評 Host</h4>
+        <ul>
+          <li>星等：1–5 星</li>
+          <li>可選評論文字</li>
+          <li>（無「是否出席」欄位）</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>頭像旁顯示的兩個指標</h3>
+    <table>
+      <thead><tr><th style="width:22%">指標</th><th>對象</th><th>公式概念</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>參加率</strong></td>
+          <td>所有會員（以 player 身份）</td>
+          <td>有到場次 ÷ 應到場次，採「貝氏平滑」公式，新會員預設 75%</td>
+        </tr>
+        <tr>
+          <td><strong>履約率</strong></td>
+          <td>Host（開團者）</td>
+          <td>如期舉辦場次 ÷ 開團總場次（host 自己取消會扣履約率）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>公平機制（避免誤傷）</h3>
+    <div class="callout">
+      <ul>
+        <li><strong>未滿 5 場：顯示「新會員」徽章</strong>，不顯示百分比，避免低樣本誤判。</li>
+        <li><strong>Host 7 天沒評論 → 自動視為「有到」</strong>，不冤枉沒被評到的會員。</li>
+        <li><strong>Player 48 小時前退出 → 不計缺席</strong>，給合理彈性（但 48 小時內退出算缺席）。</li>
+        <li><strong>Host 取消整場 → 不影響 player 參加率</strong>（但會計入 host 的履約率）。</li>
+        <li><strong>請假機制</strong>：host 評論時可勾「正當理由請假」，該場不列入 player 分母。</li>
+      </ul>
+    </div>
+
+    <h3>隱私與糾紛預防</h3>
+    <ul>
+      <li><strong>個別評論文字預設不公開</strong>，只有本人與管理員可見。</li>
+      <li>點對方頭像 → 只看得到「參加率 / 履約率 + 平均星評」聚合分數，看不到誰寫了什麼。</li>
+      <li>同一場約打、同一對 reviewer-reviewee 只能評一次，避免重複刷分。</li>
+      <li>連續多筆極端評分（全 1 星 / 全 5 星）會被系統標記給管理員，本期紀錄為主、不自動扣分。</li>
+    </ul>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4">
+    <h2 class="sec"><span class="num">04</span>通知怎麼送達會員</h2>
+    <p class="lead">推播與 Email <strong>兩條通道並行</strong>，確保會員不論有沒有安裝 PWA、有沒有同意通知權限，都不會錯過重要訊息。</p>
+
+    <div class="grid2">
+      <div class="panel good">
+        <h4>通道 A · PWA 推播</h4>
+        <p>會員「加到主畫面」安裝 PWA，並同意通知權限後 → 約打申請 / 被接受 / 聊天訊息以<strong>手機系統推播</strong>送達。</p>
+      </div>
+      <div class="panel warm">
+        <h4>通道 B · Email（Fallback）</h4>
+        <p>會員<strong>沒安裝 PWA、或未同意推播權限</strong> → 約打申請 / 被接受 / 歡迎信 / 站方公告仍以 <strong>Email</strong> 送達，不漏訊息。</p>
+      </div>
+    </div>
+
+    <h3>事件對照表</h3>
+    <table>
+      <thead><tr><th style="width:40%">事件</th><th style="width:25%">推播（PWA）</th><th>Email</th></tr></thead>
+      <tbody>
+        <tr><td>新會員歡迎</td><td>—</td><td>✓</td></tr>
+        <tr><td>約打申請（host 收）</td><td>✓</td><td>✓</td></tr>
+        <tr><td>約打被接受 / 婉拒（player 收）</td><td>✓</td><td>✓</td></tr>
+        <tr><td>即時聊天訊息</td><td>✓</td><td>—</td></tr>
+        <tr><td>站方批量公告</td><td>—</td><td>✓</td></tr>
+      </tbody>
+    </table>
+    <p class="note-inline">重要事件（約打申請、被接受/婉拒）雙通道同時發送；聊天訊息只走推播避免 Email 噪音；歡迎信與公告只走 Email。</p>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5">
+    <h2 class="sec"><span class="num">05</span>您的數位資產清單<span class="badge sage">半自助</span></h2>
+    <p class="lead">依照<strong>半自助開發服務</strong>模式，以下雲端帳號由 Sabrina 直接註冊與持有，工作室提供圖文教學引導，並在收到 API key 後執行所有開發整合。每項申請約 <strong>5–15 分鐘</strong>。</p>
+
+    <div class="callout warn">
+      <h4>⚠ 申請時請用 Email / Password 註冊，不要用 Google 一鍵登入</h4>
+      <p>Supabase、Resend 等服務都有「用 Google 登入」的快速申請選項，<strong>請不要選</strong>，請改用 <strong>Email / Password</strong> 註冊。<br>
+      原因：Google 一鍵綁定後，帳號控制權會綁在 Google 帳號上，未來轉交、團隊共用、或更換開發團隊時都會卡關。Email / Password 註冊比較單純，帳號就是帳號，符合「資產完全歸您所有」原則。</p>
+    </div>
+
+    <h3>5-1 · 需新申請的三個三方服務</h3>
+    <table>
+      <thead>
+        <tr><th style="width:18%">服務</th><th style="width:24%">申請網址</th><th>Sabrina 動作（簡）</th><th style="width:12%">急迫度</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Supabase</strong><br><span class="note-inline">資料庫</span></td>
+          <td><a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a></td>
+          <td>
+            1. 用 <strong>Email / Password</strong> 註冊<br>
+            2. 建專案，地區選 Tokyo<br>
+            3. 取 <code>URL</code> ／ <code>anon key</code> ／ <code>service_role key</code><br>
+            4. 貼進 Netlify env vars<br>
+            5. 跑工作室提供的 SQL
+          </td>
+          <td><span class="badge solid">最高</span></td>
+        </tr>
+        <tr>
+          <td><strong>Resend</strong><br><span class="note-inline">Email 寄送</span></td>
+          <td><a href="https://resend.com" target="_blank" rel="noopener">resend.com</a></td>
+          <td>
+            1. 用 <strong>Email / Password</strong> 註冊<br>
+            2. Add Domain：<code>jojotennis.com</code><br>
+            3. 到 DNS 後台加 SPF / DKIM / DMARC 三筆 records<br>
+            4. 取 API key 貼進 Netlify env vars
+          </td>
+          <td><span class="badge warm">高</span></td>
+        </tr>
+        <tr>
+          <td><strong>Cloudinary</strong><br><span class="note-inline">圖庫 / CDN</span></td>
+          <td><a href="https://cloudinary.com" target="_blank" rel="noopener">cloudinary.com</a></td>
+          <td>
+            1. 用 <strong>Email / Password</strong> 註冊（選 <strong>Free Plan</strong>）<br>
+            2. 設定 Cloud name（建議：<code>jojotennis</code>）<br>
+            3. 取 <code>Cloud name</code> ／ <code>API key</code> ／ <code>API secret</code><br>
+            4. 貼進 Netlify env vars
+          </td>
+          <td><span class="badge warm">高</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <h4>Cloudinary 在本案的用途</h4>
+      <ul>
+        <li><strong>球場場地介紹圖</strong>：每場地多張環境照、自動產生縮圖／詳細頁大圖。</li>
+        <li><strong>球具評測封面與內文配圖</strong>：產品照、開箱照、實戰測試圖。</li>
+        <li><strong>會員頭像、約打貼文配圖</strong>（未來擴充）。</li>
+        <li><strong>圖片快速載入</strong>：CDN 全球派送、依使用者裝置自動轉檔（WebP / AVIF）、依螢幕寬度派送對應尺寸（srcset），平均圖片載入速度提升 3–5 倍。</li>
+      </ul>
+      <h4 style="margin-top:14px;">Free Plan 免費額度（足夠本案初期使用）</h4>
+      <table style="margin:8px 0 0;">
+        <thead><tr><th style="width:30%">項目</th><th>免費額度／月</th></tr></thead>
+        <tbody>
+          <tr><td>儲存空間</td><td class="num">25 GB（約 5,000–10,000 張原檔球場/評測照片）</td></tr>
+          <tr><td>頻寬</td><td class="num">25 GB（約等於 50 萬次圖片載入）</td></tr>
+          <tr><td>轉檔次數</td><td class="num">25,000 次 / 月</td></tr>
+          <tr><td>影片儲存與處理</td><td>本案暫不使用</td></tr>
+        </tbody>
+      </table>
+      <p class="note-inline">超出後升級至 Plus 方案 USD $99/月（含 225GB 儲存與頻寬、225K 轉檔）；初期會員規模下預期不會用到付費方案。</p>
+    </div>
+
+    <h3>5-2 · 既有服務需 Sabrina 登入設定</h3>
+    <table>
+      <thead>
+        <tr><th style="width:18%">服務</th><th style="width:24%">登入網址</th><th>Sabrina 動作</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Firebase Console</strong></td>
+          <td><a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a></td>
+          <td>啟用 Cloud Messaging、取 VAPID key、下載 Service Account JSON、加 LINE callback 白名單</td>
+        </tr>
+        <tr>
+          <td><strong>Netlify Dashboard</strong></td>
+          <td><a href="https://app.netlify.com" target="_blank" rel="noopener">app.netlify.com</a></td>
+          <td>Site settings → Environment variables，依清單貼入約 15 組 keys</td>
+        </tr>
+        <tr>
+          <td><strong>GCP Console</strong></td>
+          <td><a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a></td>
+          <td>啟用 Maps JavaScript API、產出 API key（限制 referrer 為 jojotennis.com）</td>
+        </tr>
+        <tr>
+          <td><strong>LINE Developers</strong></td>
+          <td><a href="https://developers.line.biz" target="_blank" rel="noopener">developers.line.biz</a></td>
+          <td>建 Provider 與 Login Channel、設 Callback URL、取 Channel ID / Secret</td>
+        </tr>
+        <tr>
+          <td><strong>網域 DNS 後台</strong></td>
+          <td><span class="note-inline">Sabrina 的網域註冊商</span></td>
+          <td>加入 Resend 提供的三筆 DNS records（與 Resend 同步）</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6">
+    <h2 class="sec"><span class="num">06</span>費用提醒</h2>
+
+    <div class="callout warn">
+      <h4>⚠ LINE 推播計費注意</h4>
+      <ul>
+        <li><strong>LINE Login</strong>（一鍵登入）— <strong>免費</strong>，無使用量限制。</li>
+        <li><strong>LINE 官方帳號推播</strong>（Messaging API broadcast / push）— <strong>每月 200 則免費</strong>，超出最低月費 <strong>NT$ 800</strong>（中用量方案含 3,000 則）。</li>
+      </ul>
+      <p>本期推播功能（聊天訊息、約打通知）走 <strong>Firebase Cloud Messaging（FCM），完全免費</strong>，不會產生 LINE 計費。<br>
+      若 Sabrina 未來想用 LINE 官方帳號群發訊息給會員，再評估是否升級 LINE 方案即可。<br>
+      方案詳情：<a href="https://tw.linebiz.com/service/account-solutions/line-official-account/plan/" target="_blank" rel="noopener">tw.linebiz.com</a></p>
+    </div>
+
+    <h3>其他三方服務本期費用</h3>
+    <table>
+      <thead>
+        <tr><th style="width:24%">服務</th><th>免費額度</th><th style="width:22%">超出後</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Supabase</strong></td><td>500MB DB ／ 2GB 流量 ／ 5 萬 MAU</td><td class="num">$25 USD / 月起</td></tr>
+        <tr><td><strong>Resend</strong></td><td>3,000 封 / 月</td><td class="num">$20 USD / 月起（5 萬封）</td></tr>
+        <tr><td><strong>Cloudinary</strong></td><td>25 credits / 月（約 25GB 儲存 + 25GB 流量 + 25K 轉檔）</td><td class="num">$99 USD / 月起</td></tr>
+        <tr><td><strong>Firebase（含 FCM）</strong></td><td>FCM 完全免費；Firestore 1GB 儲存、10GB 流量/月</td><td class="num">用量計費</td></tr>
+        <tr><td><strong>Google Maps</strong></td><td>$200 USD/月 credit（約 28,000 次載入）</td><td class="num">超出按次計費</td></tr>
+      </tbody>
+    </table>
+    <p class="note-inline">初期會員量級下，<strong>整體三方服務月費預期為 NT$ 0</strong>。</p>
+  </section>
+
+  <!-- 7 -->
+  <section id="s7">
+    <h2 class="sec"><span class="num">07</span>本期不做（未來階段）</h2>
+    <ul>
+      <li>海外（日本）分頁與多語翻譯</li>
+      <li>廠商 / 教練專屬後台入口</li>
+      <li>手機簡訊驗證（待 Sabrina 申請）</li>
+      <li>金流串接（待 Sabrina 申請 ECPay / PayUni）</li>
+      <li>AI 問答助理、QR Code 分潤、打卡徽章等</li>
+    </ul>
+  </section>
+
+  <!-- 8 -->
+  <section id="s8">
+    <h2 class="sec"><span class="num">08</span>預計時程</h2>
+    <table>
+      <thead>
+        <tr><th style="width:14%">階段</th><th style="width:40%">主要工作</th><th style="width:12%">時間</th><th>Sabrina 關鍵動作</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>第 0 週</strong><br><span class="note-inline">準備</span></td>
+          <td>申請 Supabase / Resend / GCP / LINE；啟用 FCM</td>
+          <td class="num">3–5 天<br><span class="note-inline">與開發並行</span></td>
+          <td>所有 console 申請 + Netlify env vars</td>
+        </tr>
+        <tr>
+          <td><strong>第 1 週</strong><br><span class="note-inline">Day 1–7</span></td>
+          <td>Supabase 建置、資料雙寫架構<br>球場 Google 地圖<br>球場圖片輪播<br>PWA 框架 + Service Worker<br>Email 模板（React Email）<br>約打評論 schema</td>
+          <td class="num">7 天</td>
+          <td>跑 SQL migration、確認 env vars</td>
+        </tr>
+        <tr>
+          <td><strong>第 2 週</strong><br><span class="note-inline">Day 8–14</span></td>
+          <td>球具評測重構 + 後台<br>LINE Login 接入<br>推播通知（FCM）<br>約打評論 UI + 參加率<br>Email 通知 + 批量公告後台<br>整合測試 + Preview 部署</td>
+          <td class="num">7 天</td>
+          <td>確認歡迎信文案、Resend DNS、驗收</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 9 -->
+  <section id="s9">
+    <h2 class="sec"><span class="num">09</span>驗收清單</h2>
+    <p class="lead">完工後工作室提供 Preview 連結（不影響正式網站），Sabrina 依以下清單實際操作驗證：</p>
+    <ol class="checks">
+      <li>後台新增 / 編輯一個球場 → 前台地圖與圖片輪播顯示正常。</li>
+      <li>用 LINE 登入註冊新會員 → 收到歡迎信。</li>
+      <li>開一場約打 + 另一帳號申請 → host 收推播 + Email；接受後 player 也收。</li>
+      <li>手機（Android + iPhone）加主畫面開啟為 App 模式並收到推播。</li>
+      <li>約打日後 host 評論 player → 雙方頭像旁顯示參加率。</li>
+      <li>後台批量公告功能 → 寄信給選定的會員群組。</li>
+    </ol>
+    <p>通過後即正式上線到 <code>jojotennis.com</code>。</p>
+  </section>
+
+  <!-- 10 -->
+  <section id="s10">
+    <h2 class="sec"><span class="num">10</span>後續加值方向<span class="badge warm">另案估價</span></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h4>海外 / 日本分頁與多語</h4>
+        <p>建議 2026 Q3 海外宣傳前完成。</p>
+      </div>
+      <div class="panel">
+        <h4>廠商後台</h4>
+        <p>待業務模式（廠商月費 NT$ 1,500–2,500）確定後規劃。</p>
+      </div>
+      <div class="panel">
+        <h4>金流串接</h4>
+        <p>含信用卡、ATM、LINE Pay、Apple Pay。</p>
+      </div>
+      <div class="panel">
+        <h4>AI 問答客服</h4>
+        <p>視會員數成長到 1,000 人以上再評估。</p>
+      </div>
+    </div>
+  </section>
+
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>JoJo Tennis 第一階段改造計畫｜給 Sabrina（v1）— 對應 2026/05/27 會議結論。本文件為執行計畫，最終以雙方確認版本為準。<br>
+    完整技術版本：<code>docs/renovation-plan-dev.md</code>。</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -41,9 +41,11 @@ export function toUiUser(
     region: data.region || "台北市",
     yearsPlaying: data.yearsPlaying ?? 0,
     avatarInitial: nickname[0] || "?",
+    avatarUrl: data.avatarUrl || "",
     role: data.role ?? "user",
     isActive: data.isActive !== false,
     createdAt: data.createdAt ? toMillis(data.createdAt) : undefined,
+    nicknameChangesUsed: typeof data.nicknameChangesUsed === "number" ? data.nicknameChangesUsed : 0,
   };
 }
 
@@ -110,11 +112,12 @@ export function toChatMessage(raw: SchemaChatMessage & { msgId?: string }): Chat
 
 export function toUiConversation(
   id: string,
-  raw: SchemaConversation & Partial<Conversation>,
+  raw: SchemaConversation & Partial<Conversation> & { unreadByUid?: Record<string, number> },
   messages: ChatMessage[],
   currentUid?: string,
 ): Conversation {
   const last = messages.at(-1);
+  const perUserUnread = currentUid ? raw.unreadByUid?.[currentUid] : undefined;
   const unreadFromOthers = messages.filter(
     (m) =>
       m.senderUid !== currentUid &&
@@ -131,7 +134,7 @@ export function toUiConversation(
     messages,
     lastMessage: raw.lastMessage ?? last?.content,
     lastMessageTime: raw.lastMessageTime ?? (last ? last.timestamp : toMillis(raw.updatedAt)),
-    unreadCount: raw.unreadCount ?? unreadFromOthers,
+    unreadCount: perUserUnread ?? raw.unreadCount ?? unreadFromOthers,
     status: raw.status,
     ownerUid: raw.ownerUid,
   };

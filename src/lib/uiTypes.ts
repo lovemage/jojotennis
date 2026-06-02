@@ -10,9 +10,11 @@ export interface User {
   region: string;
   yearsPlaying: number;
   avatarInitial: string;
+  avatarUrl?: string;
   role?: "user" | "admin" | "coach";
   isActive?: boolean;
   createdAt?: number;
+  nicknameChangesUsed?: number;
 }
 
 export interface Message {

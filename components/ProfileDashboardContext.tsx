@@ -9,6 +9,7 @@ import { db } from "@/lib/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import { toUiMatch } from "@/lib/mappers";
 import type { Club as SchemaClub, Match as SchemaMatch, MatchApplication } from "@/lib/schema";
+import UserStatsBadge from "@/components/UserStatsBadge";
 
 type ProfileDashboardContextProps = {
   cities: string[];
@@ -74,6 +75,10 @@ export default function ProfileDashboardContext({
     respondToApplicant,
   } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
+  const [nicknameDraft, setNicknameDraft] = useState(user?.nickname ?? "");
+  useEffect(() => {
+    setNicknameDraft(user?.nickname ?? "");
+  }, [user?.nickname]);
   const [expandedMatchId, setExpandedMatchId] = useState("");
   const [expandedMessageId, setExpandedMessageId] = useState("");
   const [joinedClubs, setJoinedClubs] = useState<JoinedClub[]>([]);
@@ -398,13 +403,16 @@ export default function ProfileDashboardContext({
             <label className="block">
               <span className="text-xs font-semibold text-muted">暱稱</span>
               <input
-                value={user.nickname}
-                onChange={(event) =>
+                value={nicknameDraft}
+                onChange={(event) => setNicknameDraft(event.target.value)}
+                onBlur={() => {
+                  const next = nicknameDraft.trim();
+                  if (!next || next === user.nickname) return;
                   updateProfile({
-                    nickname: event.target.value,
-                    avatarInitial: event.target.value[0] || user.avatarInitial,
-                  })
-                }
+                    nickname: next,
+                    avatarInitial: next[0] || user.avatarInitial,
+                  });
+                }}
                 className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
               />
             </label>
@@ -501,6 +509,12 @@ export default function ProfileDashboardContext({
                               <p className="text-sm font-semibold text-pine">
                                 {applicant.nickname} · 申請加入
                               </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
+                                <span className="rounded-full bg-parchment px-2 py-0.5">
+                                  UID: {applicant.uid.slice(0, 6)}
+                                </span>
+                                <UserStatsBadge uid={applicant.uid} />
+                              </div>
                               <div className="mt-2 grid grid-cols-2 gap-3">
                                 <button
                                   type="button"

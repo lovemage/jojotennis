@@ -38,6 +38,7 @@ import {
   upsertConversationSnapshot,
   deleteConversationById,
   deleteConversationMessageById,
+  subscribeToMessages,
 } from "@/lib/messageService";
 import { saveInboxMessage } from "@/lib/inboxService";
 import { createStudentPost, updateStudentPostStatus } from "@/lib/studentService";
@@ -54,7 +55,8 @@ import type {
 } from "@/lib/schema";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
-import { USE_FIREBASE, SUPER_ADMIN_EMAILS } from "@/lib/config";
+import { USE_FIREBASE, USE_SUPABASE, SUPER_ADMIN_EMAILS } from "@/lib/config";
+import { hasSupabaseConfig } from "@/lib/supabase";
 import {
   toMillis,
   toUiUser,
@@ -99,6 +101,8 @@ interface AppState {
   loading: boolean;
   authReady: boolean;
   isAdmin: boolean;
+  accountDisabledMessage: string | null;
+  clearAccountDisabledMessage: () => void;
   users: User[];
   messages: Message[];
   matches: Match[];
@@ -136,6 +140,7 @@ interface AppState {
     },
   ) => string;
   sendChatMessage: (conversationId: string, content: string) => void;
+  subscribeConversationMessages: (conversationId: string) => () => void;
   markConversationRead: (conversationId: string) => void;
   undoApplicantDecision: (matchId: string, applicantUid: string) => void;
   addStudentNeed: (
@@ -193,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [convMeta, setConvMeta] = useState<Record<string, SchemaConversation & Partial<Conversation>>>({});
   const [convMessages, setConvMessages] = useState<Record<string, ChatMessage[]>>({});
   const messageUnsubs = useRef<Record<string, () => void>>({});
+  const [accountDisabledMessage, setAccountDisabledMessage] = useState<string | null>(null);
 
   const isAdmin = useMemo(
     () => !!user && adminEmails.map((e) => e.toLowerCase()).includes(user.email.toLowerCase()),
@@ -234,6 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             nickname: user.nickname,
             ntrp: user.ntrp,
             region: user.region,
+            avatarUrl: user.avatarUrl,
           }
         : null,
       loading: !authReady || loading,
@@ -258,11 +265,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (firebaseUser) {
         try {
           const profile = await getUserProfile(firebaseUser.uid);
+          if (profile && profile.isActive === false) {
+            setAccountDisabledMessage("您的帳號已停用，請聯繫客服");
+            await logoutService().catch(() => undefined);
+            setUser(null);
+            setFbUser(null);
+            syncAuthCookies(null, false);
+            setLoading(false);
+            setAuthReady(true);
+            return;
+          }
           setUser(
             profile
               ? toUiUser(firebaseUser.uid, firebaseUser.email, profile)
               : toUiUser(firebaseUser.uid, firebaseUser.email),
           );
+          setAccountDisabledMessage(null);
         } catch {
           setUser(toUiUser(firebaseUser.uid, firebaseUser.email));
         }
@@ -347,13 +365,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUser((prev) => {
         if (!prev) return null;
         const next = { ...prev, ...data };
-        if (USE_FIREBASE) {
-          void updateUserProfileService(prev.uid, {
-            nickname: next.nickname,
-            ntrp: next.ntrp,
-            region: next.region,
-            yearsPlaying: next.yearsPlaying,
-          });
+        if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
+          const patch: Record<string, unknown> = {};
+          if ("nickname" in data && data.nickname && data.nickname !== prev.nickname) {
+            patch.nickname = data.nickname;
+          }
+          if ("ntrp" in data && data.ntrp !== prev.ntrp) patch.ntrp = data.ntrp;
+          if ("region" in data && data.region !== prev.region) patch.region = data.region;
+          if ("yearsPlaying" in data && data.yearsPlaying !== prev.yearsPlaying)
+            patch.yearsPlaying = data.yearsPlaying;
+          if ("avatarUrl" in data && data.avatarUrl !== prev.avatarUrl)
+            patch.avatarUrl = data.avatarUrl;
+          if (Object.keys(patch).length > 0) {
+            void updateUserProfileService(prev.uid, patch);
+          }
         }
         return next;
       });
@@ -368,7 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         prev.map((item) => (item.uid === uid ? { ...item, ...data } : item)),
       );
       if (user?.uid === uid) setUser((prev) => (prev ? { ...prev, ...data } : prev));
-      if (USE_FIREBASE) {
+      if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
         const { avatarInitial: _a, createdAt: _c, uid: _u, ...payload } = data;
         void updateUserAdminFields(uid, payload);
       }
@@ -398,7 +423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const markAllRead = useCallback(() => {
     setMessages((prev) => {
       const next = prev.map((m) => (m.toUid === user?.uid ? { ...m, isRead: true } : m));
-      if (USE_FIREBASE) {
+      if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
         next.forEach((m) => {
           if (m.toUid === user?.uid) persistInboxMessage(m);
         });
@@ -461,7 +486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (existing) return existing.id;
 
-      if (USE_FIREBASE) {
+      if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
         void (async () => {
           if (type === "match" && options?.relatedId) {
             await createMatchConversation(options.relatedId, options.name ?? targetNickname, options.ownerUid ?? user.uid);
@@ -515,6 +540,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, displayConversations],
   );
 
+  const subscribeConversationMessages = useCallback(
+    (conversationId: string) => {
+      if (messageUnsubs.current[conversationId]) {
+        return () => {
+          messageUnsubs.current[conversationId]?.();
+          delete messageUnsubs.current[conversationId];
+        };
+      }
+      const unsub = subscribeToMessages(conversationId, (msgs) => {
+        setConvMessages((prev) => ({
+          ...prev,
+          [conversationId]: msgs.map((m) => toChatMessage(m)),
+        }));
+      });
+      messageUnsubs.current[conversationId] = unsub;
+      return () => {
+        messageUnsubs.current[conversationId]?.();
+        delete messageUnsubs.current[conversationId];
+      };
+    },
+    [],
+  );
+
   const sendChatMessage = useCallback(
     (conversationId: string, content: string) => {
       if (!user || !content.trim()) return;
@@ -524,7 +572,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         trimmed.startsWith("公告：") &&
         displayConversations.find((c) => c.id === conversationId)?.type === "club";
 
-      if (USE_FIREBASE) {
+      if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
         void sendChatMessageService(
           conversationId,
           isAnnouncement ? "system" : user.uid,
@@ -1087,12 +1135,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isAdmin],
   );
 
+  const clearAccountDisabledMessage = useCallback(() => {
+    setAccountDisabledMessage(null);
+  }, []);
+
   const value: AppState = {
     fbUser,
     user,
     loading,
     authReady,
     isAdmin,
+    accountDisabledMessage,
+    clearAccountDisabledMessage,
     users,
     messages,
     matches: displayMatches,
@@ -1117,6 +1171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     respondToApplicant,
     getOrCreateConversation,
     sendChatMessage,
+    subscribeConversationMessages,
     markConversationRead,
     undoApplicantDecision,
     addStudentNeed,

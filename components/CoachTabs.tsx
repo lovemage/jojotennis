@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { taiwanCities } from "@/data/cities";
 import type { Coach, StudentNeed } from "@/data/coaches";
 import { useApp, type StudentNeedRecord } from "@/context/AppContext";
@@ -10,6 +10,8 @@ import LoginPromptModal from "@/components/LoginPromptModal";
 type CoachTabsProps = {
   coaches: Coach[];
   studentNeeds: StudentNeed[];
+  activeTab?: "coaches" | "students";
+  onTabChange?: (tab: "coaches" | "students") => void;
 };
 
 type DisplayStudentNeed = StudentNeed & {
@@ -25,9 +27,13 @@ const allLevelsLabel = "全部等級";
 export default function CoachTabs({
   coaches = [],
   studentNeeds = [],
+  activeTab: activeTabProp,
+  onTabChange,
 }: CoachTabsProps) {
   const { user, sendMessage, studentNeeds: dynamicStudentNeeds = [] } = useApp();
-  const [activeTab, setActiveTab] = useState<"coaches" | "students">("coaches");
+  const [internalTab, setInternalTab] = useState<"coaches" | "students">("coaches");
+  const activeTab = activeTabProp ?? internalTab;
+  const setActiveTab = onTabChange ?? setInternalTab;
   const [city, setCity] = useState(allCitiesLabel);
   const [level, setLevel] = useState(allLevelsLabel);
   const [messageTarget, setMessageTarget] = useState("");
@@ -48,7 +54,26 @@ export default function CoachTabs({
     ],
     [],
   );
-  const filteredCoaches = coaches.filter(
+  const [shuffleVersion, setShuffleVersion] = useState(0);
+  const prevTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "coaches" && prevTabRef.current !== "coaches") {
+      setShuffleVersion((v) => v + 1);
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const shuffledCoaches = useMemo(() => {
+    const arr = [...coaches];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coaches, shuffleVersion]);
+
+  const filteredCoaches = shuffledCoaches.filter(
     (coach) =>
       (city === allCitiesLabel || coach.city === city) &&
       (level === allLevelsLabel || coach.levelRange === level),
@@ -113,36 +138,17 @@ export default function CoachTabs({
 
   return (
     <>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => setActiveTab("coaches")}
-          className={`rounded-full px-4 py-3 text-sm font-bold ${
-            activeTab === "coaches" ? "bg-pine text-white" : "bg-white text-pine"
-          }`}
-        >
-          🎓 找教練
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("students")}
-          className={`rounded-full px-4 py-3 text-sm font-bold ${
-            activeTab === "students" ? "bg-pine text-white" : "bg-white text-pine"
-          }`}
-        >
-          🎾 找學生
-        </button>
-      </div>
-
-      <Link href="/club" className="mt-3 inline-flex text-sm font-semibold text-clay underline">
-        加入球友社團 →
-      </Link>
-
-      <div className="mt-5 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
+      <div className="rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
         {activeTab === "students" ? (
-          <p className="mb-4 rounded-2xl bg-parchment p-4 text-sm leading-6 text-pine">
-            學員在這裡發布學習需求，教練可主動私訊媒合。完全免費，直接聯繫。
-          </p>
+          <div className="mb-4 rounded-2xl bg-parchment p-4 text-sm leading-6 text-pine">
+            <p>瀏覽學員學習需求，主動私訊媒合，完全免費。</p>
+            <p className="mt-2 text-muted">
+              尚未登錄教練？{" "}
+              <Link href="/coach/register" className="font-semibold text-clay underline">
+                請先申請成為平台教練
+              </Link>
+            </p>
+          </div>
         ) : null}
 
         <div className="grid grid-cols-2 gap-3">
@@ -175,13 +181,6 @@ export default function CoachTabs({
           </label>
         </div>
 
-        {activeTab === "coaches" ? (
-          <select className="mt-3 w-full rounded-2xl border border-parchment bg-ivory px-3 py-3 text-sm text-ink outline-none focus:border-clay">
-            <option>費用排序</option>
-            <option>費用由低到高</option>
-            <option>費用由高到低</option>
-          </select>
-        ) : null}
       </div>
 
       <div className="mt-6 space-y-4">

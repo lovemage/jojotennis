@@ -5,6 +5,15 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuth()
+        && request.auth.token.email != null
+        && (
+          request.auth.token.email.lower() in ['sasabrinalu@gmail.com', 'test@gmail.com']
+          || firestore.exists(/databases/(default)/documents/adminUsers/$(request.auth.token.email.lower()))
+        );
+    }
+
     match /news/{allPaths=**} {
       allow read: if true;
       allow write: if isAuth();
@@ -23,6 +32,13 @@ service firebase.storage {
     match /courts/{allPaths=**} {
       allow read: if true;
       allow write: if isAuth();
+    }
+
+    // 教練申請的身分證影像：申請人本人可上傳／覆寫；僅本人或管理員可讀；管理員可刪
+    match /pending_coaches/{userId}/{fileName} {
+      allow read: if isAuth() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuth() && request.auth.uid == userId;
+      allow delete: if isAdmin() || (isAuth() && request.auth.uid == userId);
     }
   }
 }

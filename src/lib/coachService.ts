@@ -4,6 +4,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  where,
   doc,
   updateDoc,
   serverTimestamp,
@@ -71,6 +72,55 @@ export function subscribeToCoachesAdmin(cb: (coaches: AdminCoach[]) => void) {
 export async function setCoachVerified(coachId: string, isVerified: boolean) {
   await updateDoc(doc(db, "coaches", coachId), {
     isVerified,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export type MyCoachState = UiCoach & { isPublished: boolean };
+
+export function subscribeMyCoach(
+  uid: string,
+  cb: (coach: MyCoachState | null) => void,
+) {
+  return onSnapshot(
+    query(collection(db, "coaches"), where("uid", "==", uid)),
+    (snap) => {
+      const candidates = snap.docs.filter(
+        (d) => (d.data() as Coach).isDeleted !== true,
+      );
+      if (candidates.length === 0) {
+        cb(null);
+        return;
+      }
+      if (candidates.length > 1) {
+        console.warn(
+          `[my-coach] uid=${uid} 找到 ${candidates.length} 筆 coach 文件，採用最新 updatedAt`,
+          candidates.map((d) => d.id),
+        );
+      }
+      const chosen = candidates.reduce((acc, d) => {
+        const a = (d.data() as { updatedAt?: { toMillis?: () => number } })
+          ?.updatedAt?.toMillis?.() ?? 0;
+        const b = (acc.data() as { updatedAt?: { toMillis?: () => number } })
+          ?.updatedAt?.toMillis?.() ?? 0;
+        return a > b ? d : acc;
+      }, candidates[0]);
+      const raw = chosen.data() as Coach;
+      cb({
+        ...toUiCoach(chosen.id, { ...raw, coachId: chosen.id }),
+        isPublished: raw.isPublished !== false,
+      });
+    },
+    (err) => {
+      console.error("[my-coach] 監聽失敗：", err.code, err.message);
+      cb(null);
+    },
+  );
+}
+
+export async function setCoachPublished(coachId: string, isPublished: boolean) {
+  await updateDoc(doc(db, "coaches", coachId), {
+    isPublished,
     updatedAt: serverTimestamp(),
   });
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <rect width="1200" height="675" fill="#ede5d6"/>
+  <path d="M0 440h1200v235H0z" fill="#b85c38"/>
+  <path d="M80 508h1040M600 440v235" stroke="#f7f2eb" stroke-width="9" opacity=".72"/>
+  <path d="M220 430c108-66 206-102 310-90 74 8 144 48 223 45 77-3 122-40 176-24 67 20 112 78 160 123 26 25 15 71-20 80-145 37-642 40-839 4-75-14-88-89-10-138z" fill="#1e3d2f"/>
+  <path d="M282 404c48 74 142 106 281 96 137-10 254 12 350 55" fill="none" stroke="#c9a84c" stroke-width="15" stroke-linecap="round"/>
+  <path d="M398 354l-60 104M482 344l-60 104M566 350l-60 104" stroke="#f7f2eb" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="1000" cy="145" r="58" fill="#d8e95f"/>
+  <text x="70" y="105" fill="#b85c38" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">COURT SHOE TEST</text>
+  <text x="70" y="572" fill="#f7f2eb" font-family="Arial, sans-serif" font-size="58" font-weight="900">Clay Court Shoe Review</text>
+</svg>
