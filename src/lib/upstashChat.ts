@@ -5,7 +5,7 @@ import type { Message } from "@/lib/schema";
 
 type RedisChatMessage = Omit<Message, "createdAt"> & { createdAt: number };
 
-const DEFAULT_TTL_DAYS = 30;
+const DEFAULT_TTL_DAYS = 7;
 const MAX_MESSAGES_PER_CONVERSATION = 500;
 
 let redisClient: Redis | null = null;
