@@ -54,7 +54,7 @@ function openDatePicker(input: HTMLInputElement | null) {
 
 export default function MatchBoard() {
   const router = useRouter();
-  const { user, matches, addMatch, applyMatch, getOrCreateConversation } = useApp();
+  const { user, matches, addMatch, updateMatchSettings, applyMatch, getOrCreateConversation } = useApp();
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   if (typeof window !== "undefined") {
     console.log("目前 matches：", matches.length);
@@ -94,6 +94,24 @@ export default function MatchBoard() {
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joinBusy, setJoinBusy] = useState(false);
+  const [chatSettingsMatch, setChatSettingsMatch] = useState<Match | null>(null);
+  const [chatSettingsSaving, setChatSettingsSaving] = useState(false);
+  const [chatSettingsError, setChatSettingsError] = useState("");
+  const [chatSettings, setChatSettings] = useState({
+    name: "",
+    city: "台北市",
+    district: "",
+    venue: "",
+    date: "",
+    startHour: "09",
+    startMinute: "00",
+    endHour: "11",
+    endMinute: "00",
+    totalSlots: "4",
+    ntrpRequired: ["不限"],
+    joinMode: "approval" as "approval" | "private",
+    message: "",
+  });
 
   function requireLogin(action: () => void) {
     if (!user) {
@@ -138,6 +156,28 @@ export default function MatchBoard() {
       return {
         ...currentDraft,
         ntrpLevels: nextLevels.length > 0 ? nextLevels : ["不限"],
+      };
+    });
+  }
+
+  function updateChatSettings(field: keyof typeof chatSettings, value: string) {
+    setChatSettings((current) => ({ ...current, [field]: value }));
+  }
+
+  function toggleChatNtrpLevel(option: string) {
+    setChatSettings((current) => {
+      if (option === "不限") {
+        return { ...current, ntrpRequired: ["不限"] };
+      }
+
+      const withoutAny = current.ntrpRequired.filter((level) => level !== "不限");
+      const nextLevels = withoutAny.includes(option)
+        ? withoutAny.filter((level) => level !== option)
+        : [...withoutAny, option];
+
+      return {
+        ...current,
+        ntrpRequired: nextLevels.length > 0 ? nextLevels : ["不限"],
       };
     });
   }
@@ -238,12 +278,75 @@ export default function MatchBoard() {
       return;
     }
 
+    if (match.ownerUid === user.uid) {
+      const [startHour = "09", startMinute = "00"] = match.startTime.split(":");
+      const [endHour = "11", endMinute = "00"] = match.endTime.split(":");
+      setChatSettingsMatch(match);
+      setChatSettingsError("");
+      setChatSettings({
+        name: `揪球：${match.title}`,
+        city: match.city,
+        district: match.district,
+        venue: match.venue,
+        date: match.date.replaceAll("/", "-"),
+        startHour,
+        startMinute,
+        endHour,
+        endMinute,
+        totalSlots: String(match.totalSlots),
+        ntrpRequired: match.ntrpRequired.length > 0 ? match.ntrpRequired : ["不限"],
+        joinMode: match.joinMode === "private" ? "private" : "approval",
+        message: `主揪已開啟「${match.title}」聊天室，請在這裡確認集合地點、費用與注意事項。\n請勿在平台外提前付款，謹防詐騙。`,
+      });
+      return;
+    }
+
     const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
       type: "match",
       relatedId: match.id,
       name: `揪球：${match.title}`,
       ownerUid: match.ownerUid,
     });
+    router.push(`/messages?conversation=${conversationId}&from=match`);
+  }
+
+  async function confirmMatchConversationSettings() {
+    if (!chatSettingsMatch || !user) return;
+
+    const match = chatSettingsMatch;
+    const startTime = `${padHour(chatSettings.startHour)}:${padMinute(chatSettings.startMinute)}`;
+    const endTime = `${padHour(chatSettings.endHour)}:${padMinute(chatSettings.endMinute)}`;
+    const selectedDate = chatSettings.date ? chatSettings.date.replaceAll("-", "/") : match.date;
+    const totalSlots = parsePeople(chatSettings.totalSlots);
+
+    setChatSettingsSaving(true);
+    setChatSettingsError("");
+    const result = await updateMatchSettings(match.id, {
+      city: chatSettings.city,
+      district: chatSettings.district || "地區待確認",
+      venue: chatSettings.venue || `${chatSettings.city}${chatSettings.district || ""}球場待確認`,
+      date: selectedDate,
+      startTime,
+      endTime,
+      ntrpRequired: chatSettings.ntrpRequired,
+      totalSlots,
+      joinMode: chatSettings.joinMode,
+    });
+    setChatSettingsSaving(false);
+
+    if (!result.ok) {
+      setChatSettingsError(result.msg);
+      return;
+    }
+
+    const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
+      type: "match",
+      relatedId: match.id,
+      name: chatSettings.name.trim() || `揪球：${match.title}`,
+      ownerUid: match.ownerUid,
+      systemMessage: chatSettings.message.trim() || undefined,
+    });
+    setChatSettingsMatch(null);
     router.push(`/messages?conversation=${conversationId}&from=match`);
   }
 
@@ -729,6 +832,195 @@ export default function MatchBoard() {
                 className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
               >
                 確認加入
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {chatSettingsMatch ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[1.5rem] bg-white p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-pine">球局聊天室設定</h3>
+            <p className="mt-2 text-sm leading-6 text-muted">開啟「{chatSettingsMatch.title}」前，先確認球局資訊。</p>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold text-muted">聊天室名稱</span>
+                <input
+                  value={chatSettings.name}
+                  onChange={(event) => updateChatSettings("name", event.target.value.slice(0, 40))}
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">城市</span>
+                <select
+                  value={chatSettings.city}
+                  onChange={(event) => updateChatSettings("city", event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-3 py-3 text-sm outline-none focus:border-clay"
+                >
+                  {taiwanCities.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">地區</span>
+                <input
+                  value={chatSettings.district}
+                  onChange={(event) => updateChatSettings("district", event.target.value.slice(0, 20))}
+                  placeholder="地區待確認"
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+                />
+              </label>
+
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold text-muted">地點</span>
+                <input
+                  value={chatSettings.venue}
+                  onChange={(event) => updateChatSettings("venue", event.target.value.slice(0, 50))}
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">日期</span>
+                <input
+                  type="date"
+                  value={chatSettings.date}
+                  onChange={(event) => updateChatSettings("date", event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-3 py-3 text-sm outline-none focus:border-clay"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-muted">人數</span>
+                <select
+                  value={chatSettings.totalSlots}
+                  onChange={(event) => updateChatSettings("totalSlots", event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-3 py-3 text-sm outline-none focus:border-clay"
+                >
+                  {Array.from({ length: 8 }, (_, index) => String(index + 1)).map((count) => (
+                    <option key={count} value={count}>
+                      {count}人
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="sm:col-span-2 grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted">開始時間</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl border border-parchment bg-ivory px-3 py-2">
+                    <input
+                      inputMode="numeric"
+                      value={chatSettings.startHour}
+                      onChange={(event) => updateChatSettings("startHour", event.target.value.replace(/\D/g, "").slice(0, 2))}
+                      className="w-full bg-transparent text-center text-sm outline-none"
+                    />
+                    <input
+                      inputMode="numeric"
+                      value={chatSettings.startMinute}
+                      onChange={(event) => updateChatSettings("startMinute", event.target.value.replace(/\D/g, "").slice(0, 2))}
+                      className="w-full bg-transparent text-center text-sm outline-none"
+                    />
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted">結束時間</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl border border-parchment bg-ivory px-3 py-2">
+                    <input
+                      inputMode="numeric"
+                      value={chatSettings.endHour}
+                      onChange={(event) => updateChatSettings("endHour", event.target.value.replace(/\D/g, "").slice(0, 2))}
+                      className="w-full bg-transparent text-center text-sm outline-none"
+                    />
+                    <input
+                      inputMode="numeric"
+                      value={chatSettings.endMinute}
+                      onChange={(event) => updateChatSettings("endMinute", event.target.value.replace(/\D/g, "").slice(0, 2))}
+                      className="w-full bg-transparent text-center text-sm outline-none"
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="sm:col-span-2">
+                <span className="text-xs font-semibold text-muted">NTRP 等級</span>
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {ntrpOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => toggleChatNtrpLevel(option)}
+                      className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                        chatSettings.ntrpRequired.includes(option)
+                          ? "border-clay bg-clay text-white"
+                          : "border-parchment bg-ivory text-muted"
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <span className="text-xs font-semibold text-muted">公開與否</span>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  {[
+                    { value: "approval", label: "公開申請" },
+                    { value: "private", label: "私人加入碼" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => updateChatSettings("joinMode", option.value)}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-bold ${
+                        chatSettings.joinMode === option.value
+                          ? "border-clay bg-clay text-white"
+                          : "border-parchment bg-ivory text-muted"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold text-muted">開場訊息</span>
+                <textarea
+                  value={chatSettings.message}
+                  onChange={(event) => updateChatSettings("message", event.target.value.slice(0, 180))}
+                  rows={4}
+                  className="mt-2 w-full resize-none rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm leading-6 outline-none focus:border-clay"
+                />
+                <span className="float-right text-xs text-muted">{chatSettings.message.length}/180</span>
+              </label>
+            </div>
+
+            {chatSettingsError ? <p className="mt-4 text-sm font-bold text-red-600">{chatSettingsError}</p> : null}
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setChatSettingsMatch(null)}
+                className="rounded-full border border-parchment px-4 py-3 text-sm font-bold text-muted"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={chatSettingsSaving}
+                onClick={() => void confirmMatchConversationSettings()}
+                className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {chatSettingsSaving ? "儲存中" : "開啟聊天室"}
               </button>
             </div>
           </div>

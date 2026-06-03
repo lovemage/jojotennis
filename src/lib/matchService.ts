@@ -142,6 +142,59 @@ export async function createMatch(data: {
   return ref.id;
 }
 
+export async function updateMatchSettings(
+  matchId: string,
+  ownerUid: string,
+  data: {
+    city: string;
+    district: string;
+    venue: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    ntrpRequired: string[];
+    totalSlots: number;
+    joinMode: MatchJoinMode;
+  },
+): Promise<{ ok: boolean; msg: string }> {
+  if (!isTimeRangeValid(data.startTime, data.endTime)) {
+    return { ok: false, msg: "結束時間必須晚於開始時間" };
+  }
+  if (data.totalSlots < 1 || data.totalSlots > 8) {
+    return { ok: false, msg: "人數需在 1–8 人之間" };
+  }
+
+  const matchRef = doc(db, "matches", matchId);
+  const snap = await getDoc(matchRef);
+  if (!snap.exists()) return { ok: false, msg: "球局不存在" };
+
+  const match = snap.data() as Match;
+  if (match.ownerUid !== ownerUid) return { ok: false, msg: "只有主揪可以更新球局設定" };
+  if (data.totalSlots < match.filledSlots) {
+    return { ok: false, msg: `人數不可小於已核准人數 ${match.filledSlots}` };
+  }
+
+  const nextJoinCode =
+    data.joinMode === "private" && !match.joinCode ? generateJoinCode() : undefined;
+
+  await updateDoc(matchRef, {
+    city: data.city,
+    district: data.district,
+    venue: data.venue,
+    date: data.date,
+    weekday: weekdayLabel(data.date),
+    startTime: data.startTime,
+    endTime: data.endTime,
+    ntrpRequired: data.ntrpRequired,
+    totalSlots: data.totalSlots,
+    joinMode: data.joinMode,
+    ...(nextJoinCode ? { joinCode: nextJoinCode } : {}),
+    updatedAt: serverTimestamp(),
+  });
+
+  return { ok: true, msg: "球局設定已更新" };
+}
+
 export function subscribeToMatches(cb: (m: Match[]) => void, cityFilter?: string) {
   return onSnapshot(
     collection(db, "matches"),

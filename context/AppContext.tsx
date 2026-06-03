@@ -24,6 +24,7 @@ import {
   applyToMatch,
   joinMatchWithCode,
   respondToApplication,
+  updateMatchSettings as updateMatchSettingsService,
   closeMatch as closeMatchService,
   undoApplicationToPending,
   adminUpdateMatchStatus,
@@ -124,6 +125,10 @@ interface AppState {
   ) => void;
   markAllRead: () => void;
   addMatch: (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => void;
+  updateMatchSettings: (
+    matchId: string,
+    settings: Pick<Match, "city" | "district" | "venue" | "date" | "startTime" | "endTime" | "ntrpRequired" | "totalSlots" | "joinMode">,
+  ) => Promise<{ ok: boolean; msg: string }>;
   closeMatch: (matchId: string) => void;
   applyMatch: (matchId: string, joinCode?: string) => Promise<{ ok: boolean; msg: string }>;
   respondToApplicant: (matchId: string, applicantUid: string, accept: boolean) => void;
@@ -711,6 +716,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, status: "closed" } : m)));
   }, []);
 
+  const updateMatchSettings = useCallback(
+    async (
+      matchId: string,
+      settings: Pick<Match, "city" | "district" | "venue" | "date" | "startTime" | "endTime" | "ntrpRequired" | "totalSlots" | "joinMode">,
+    ) => {
+      if (!user) return { ok: false, msg: "請先登入" };
+      const match = displayMatches.find((m) => m.id === matchId);
+      if (!match) return { ok: false, msg: "球局不存在" };
+      if (match.ownerUid !== user.uid) return { ok: false, msg: "只有主揪可以更新球局設定" };
+      if (settings.totalSlots < match.filledSlots) {
+        return { ok: false, msg: `人數不可小於已核准人數 ${match.filledSlots}` };
+      }
+
+      if (USE_FIREBASE) {
+        try {
+          return await updateMatchSettingsService(matchId, user.uid, {
+            city: settings.city,
+            district: settings.district,
+            venue: settings.venue,
+            date: settings.date,
+            startTime: settings.startTime,
+            endTime: settings.endTime,
+            ntrpRequired: settings.ntrpRequired,
+            totalSlots: settings.totalSlots,
+            joinMode: settings.joinMode ?? "approval",
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (message.includes("Quota exceeded") || message.includes("resource-exhausted")) {
+            return { ok: false, msg: "Firebase 配額已用完，暫時無法更新球局設定。請稍後再試。" };
+          }
+          return { ok: false, msg: message || "更新球局設定失敗，請稍後再試" };
+        }
+      }
+
+      setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, ...settings } : m)));
+      return { ok: true, msg: "球局設定已更新" };
+    },
+    [displayMatches, user],
+  );
+
   const applyMatch = useCallback(
     async (matchId: string, joinCode?: string) => {
       if (!user) return { ok: false, msg: "請先登入" };
@@ -1176,6 +1222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sendMessage,
     markAllRead,
     addMatch,
+    updateMatchSettings,
     closeMatch,
     applyMatch,
     respondToApplicant,
