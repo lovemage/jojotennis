@@ -88,7 +88,7 @@ export default function MatchBoard() {
     totalPlayers: "4人",
     spotsNeeded: "2人",
     notes: "",
-    joinMode: "public" as "public" | "private",
+    joinMode: "approval" as "approval" | "private",
   });
   const [joinPrompt, setJoinPrompt] = useState<Match | null>(null);
   const [joinCodeInput, setJoinCodeInput] = useState("");
@@ -297,8 +297,8 @@ export default function MatchBoard() {
           const isExpired = isMatchExpired(match);
           const isClosed = match.status === "closed" || isExpired;
           const isFull = remaining === 0;
-          const hasApplied =
-            !!user && match.applicants.some((applicant) => applicant.uid === user.uid);
+          const myApplication = match.applicants.find((applicant) => applicant.uid === user?.uid);
+          const hasApplied = Boolean(myApplication);
           const isOwner = user?.uid === match.ownerUid;
           return (
             <article
@@ -382,8 +382,12 @@ export default function MatchBoard() {
                       hasApplied || isOwner || isFull ? "bg-muted" : "bg-clay"
                     }`}
                   >
-                    {hasApplied
-                      ? "已申請"
+                    {myApplication?.status === "accepted"
+                      ? "已加入"
+                      : myApplication?.status === "pending"
+                        ? "待主揪核准"
+                        : hasApplied
+                          ? "已申請"
                       : isOwner
                         ? "你是主揪"
                         : isFull
@@ -433,15 +437,15 @@ export default function MatchBoard() {
                 <div className="mt-2 grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setDraft((current) => ({ ...current, joinMode: "public" }))}
+                    onClick={() => setDraft((current) => ({ ...current, joinMode: "approval" }))}
                     className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
-                      draft.joinMode === "public"
+                      draft.joinMode === "approval"
                         ? "border-clay bg-clay/10 text-clay"
                         : "border-parchment bg-ivory text-muted"
                     }`}
                   >
-                    公開
-                    <span className="mt-1 block text-xs font-normal">球友直接加入</span>
+                    需核准
+                    <span className="mt-1 block text-xs font-normal">主揪同意後加入</span>
                   </button>
                   <button
                     type="button"
@@ -667,8 +671,8 @@ export default function MatchBoard() {
               </label>
 
               <p className="pt-2 text-center text-xs text-muted">
-                {draft.joinMode === "public"
-                  ? "公開球局：球友可直接加入，無需你審核。"
+                {draft.joinMode === "approval"
+                  ? "需核准球局：球友申請後，需主揪同意才能發送聊天室訊息。"
                   : "私人球局：系統會產生 6 位數加入碼，分享給朋友即可加入。"}
               </p>
               <button

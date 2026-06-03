@@ -26,7 +26,7 @@ export async function handleLineCallback(request: Request) {
       throw new Error("Invalid LINE login state");
     }
 
-    const token = await exchangeLineCodeForToken(code);
+    const token = await exchangeLineCodeForToken(code, request.url);
     const profile = await getLineProfile(token.access_token);
     const uid = `line_${profile.userId}`;
     const email = getLineEmailFromIdToken(token.id_token);

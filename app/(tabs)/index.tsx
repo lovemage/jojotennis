@@ -48,7 +48,7 @@ export default function HomeScreen() {
           {[
             { icon: '🗺', title: '找球場', sub: '附近 12 個場地' },
             { icon: '🎾', title: '約球配對', sub: '5 位球友在線' },
-            { icon: '👥', title: '我的社團', sub: '大安球友會' },
+            { icon: '💬', title: '聊天室', sub: '揪球訊息' },
             { icon: '📅', title: '我的活動', sub: '週六 09:00' },
           ].map((item, i) => (
             <TouchableOpacity key={i} style={styles.quickCard}>

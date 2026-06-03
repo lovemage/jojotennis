@@ -8,12 +8,12 @@ import type { Conversation } from "@/context/AppContext";
 import { sendMessage as sendFirestoreMessage } from "@/lib/messageService";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
-type ConversationTab = "all" | "match" | "club";
+type ConversationTab = "all" | "match" | "direct";
 
 const tabs: Array<{ id: ConversationTab; label: string }> = [
   { id: "all", label: "全部" },
   { id: "match", label: "揪球" },
-  { id: "club", label: "社團" },
+  { id: "direct", label: "私訊" },
 ];
 
 function formatTime(value?: number) {
@@ -32,7 +32,7 @@ function MessagesPageContent() {
     user,
     conversations,
     matches,
-    sendChatMessage,
+    respondToApplicant,
     subscribeConversationMessages,
     markConversationRead,
     undoApplicantDecision,
@@ -70,15 +70,48 @@ function MessagesPageContent() {
 
   const selectedConversation: Conversation | undefined = useMemo(() => {
     if (selectedId) {
-      return conversations.find((c) => c.id === selectedId);
+      const existing = conversations.find((c) => c.id === selectedId);
+      if (existing) return existing;
+      if (selectedId.startsWith("match_")) {
+        const matchId = selectedId.replace(/^match_/, "");
+        const match = matches.find((item) => item.id === matchId);
+        if (match) {
+          return {
+            id: selectedId,
+            type: "match",
+            participants: [match.ownerUid, ...match.applicants.filter((app) => app.status === "accepted").map((app) => app.uid)],
+            name: `揪球：${match.title}`,
+            relatedId: match.id,
+            messages: [],
+            unreadCount: 0,
+            ownerUid: match.ownerUid,
+          };
+        }
+      }
+      return undefined;
     }
     if (!isMobile && filteredConversations.length > 0) {
       return filteredConversations[0];
     }
     return undefined;
-  }, [selectedId, conversations, isMobile, filteredConversations]);
+  }, [selectedId, conversations, matches, isMobile, filteredConversations]);
 
   const selectedMatch = matches.find((match) => match.id === selectedConversation?.relatedId);
+  const selectedApplicant = selectedMatch?.applicants.find((applicant) => applicant.uid === user?.uid);
+  const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
+  const pendingApplicants = selectedMatch?.applicants.filter((applicant) => applicant.status === "pending") ?? [];
+  const canSendSelectedConversation =
+    !selectedConversation ||
+    selectedConversation.type !== "match" ||
+    isMatchHost ||
+    selectedApplicant?.status === "accepted" ||
+    selectedConversation.participants.includes(user?.uid ?? "");
+  const sendDisabledReason =
+    selectedConversation?.type === "match" && !canSendSelectedConversation
+      ? selectedApplicant?.status === "pending"
+        ? "主揪核准前，你可以查看聊天室，但暫時無法發送訊息。"
+        : "加入球局後才能在此聊天室發送訊息。"
+      : "";
 
   useEffect(() => {
     const conversationId = searchParams.get("conversation");
@@ -107,14 +140,16 @@ function MessagesPageContent() {
   async function submitMessage(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!selectedConversation || !draft.trim() || !user) return;
+    if (!canSendSelectedConversation) {
+      alert(sendDisabledReason || "目前無法在此聊天室發送訊息");
+      return;
+    }
     const trimmed = draft.trim();
-    const isAnnouncement =
-      trimmed.startsWith("公告：") && selectedConversation.type === "club";
     try {
       await sendFirestoreMessage(
         selectedConversation.id,
-        isAnnouncement ? "system" : user.uid,
-        isAnnouncement ? "社團公告" : user.nickname,
+        user.uid,
+        user.nickname,
         trimmed,
       );
       setDraft("");
@@ -191,7 +226,7 @@ function MessagesPageContent() {
                   }`}
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pine text-sm font-bold text-white">
-                    {conversation.type === "club" ? "👥" : conversation.name.slice(0, 1)}
+                    {conversation.type === "match" ? "🎾" : conversation.name.slice(0, 1)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-pine">{conversation.name}</span>
@@ -250,43 +285,72 @@ function MessagesPageContent() {
                   <h2 className="truncate text-lg font-bold text-pine">{selectedConversation.name}</h2>
                   <p className="mt-0.5 text-xs text-muted">
                     {selectedConversation.type === "match"
-                      ? selectedConversation.status === "confirmed"
-                        ? "揪球已確認"
-                        : "等待主揪回覆"
-                      : selectedConversation.type === "club"
-                        ? "社團聊天室"
-                        : "私人對話"}
+                      ? canSendSelectedConversation
+                        ? "球局聊天室"
+                        : "等待主揪核准"
+                      : "私人對話"}
                   </p>
                   {selectedConversation.type === "match" &&
                   selectedMatch &&
                   selectedMatch.ownerUid === user.uid ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
-                      {selectedMatch.applicants
-                        .filter(
-                          (applicant) =>
-                            applicant.status === "accepted" || applicant.status === "pending",
-                        )
-                        .map((applicant) => (
-                          <span
-                            key={applicant.uid}
-                            className="inline-flex items-center gap-1 rounded-full bg-parchment px-2 py-0.5"
-                          >
-                            <span>{applicant.nickname}</span>
-                            <span>· UID: {applicant.uid.slice(0, 6)}</span>
-                            <UserStatsBadge uid={applicant.uid} />
-                          </span>
-                        ))}
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
+                        {selectedMatch.applicants
+                          .filter(
+                            (applicant) =>
+                              applicant.status === "accepted" || applicant.status === "pending",
+                          )
+                          .map((applicant) => (
+                            <span
+                              key={applicant.uid}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
+                                applicant.status === "pending" ? "bg-amber-100 text-amber-900" : "bg-parchment"
+                              }`}
+                            >
+                              <span>{applicant.nickname}</span>
+                              <span>· {applicant.status === "pending" ? "待核准" : "已加入"}</span>
+                              <span>· UID: {applicant.uid.slice(0, 6)}</span>
+                              <UserStatsBadge uid={applicant.uid} />
+                            </span>
+                          ))}
+                      </div>
+                      {pendingApplicants.length > 0 ? (
+                        <div className="space-y-2 rounded-2xl bg-amber-50 p-3 text-xs text-amber-950">
+                          <p className="font-bold">待核准球友</p>
+                          {pendingApplicants.map((applicant) => (
+                            <div key={applicant.uid} className="flex items-center justify-between gap-2">
+                              <span className="min-w-0 truncate font-bold">{applicant.nickname}</span>
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => respondToApplicant(selectedMatch.id, applicant.uid, true)}
+                                  className="rounded-full bg-pine px-3 py-1 font-bold text-white"
+                                >
+                                  同意
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => respondToApplicant(selectedMatch.id, applicant.uid, false)}
+                                  className="rounded-full border border-amber-300 px-3 py-1 font-bold text-amber-900"
+                                >
+                                  婉拒
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
-                {selectedConversation.type === "club" && selectedConversation.ownerUid === user.uid ? (
-                  <span className="shrink-0 rounded-full bg-gold/25 px-3 py-1 text-xs font-bold text-pine">
-                    社長
-                  </span>
-                ) : null}
               </header>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                {sendDisabledReason ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">
+                    {sendDisabledReason}
+                  </div>
+                ) : null}
                 {selectedConversation.messages.map((message) => {
                   const isMine = message.senderUid === user.uid;
                   const isSystem = message.type === "system";
@@ -327,12 +391,6 @@ function MessagesPageContent() {
                         {!isMine && !isSystem ? (
                           <p className="mb-1 flex items-center gap-2 text-xs font-bold text-pine">
                             {message.senderNickname}
-                            {selectedConversation.type === "club" &&
-                            message.senderUid === selectedConversation.ownerUid ? (
-                              <span className="rounded-full bg-gold/25 px-2 py-0.5 text-[10px] text-pine">
-                                社長
-                              </span>
-                            ) : null}
                           </p>
                         ) : null}
                         {message.content}
@@ -347,29 +405,19 @@ function MessagesPageContent() {
                 onSubmit={submitMessage}
                 className="flex gap-2 border-t border-parchment bg-white p-3"
               >
-                {selectedConversation.type === "club" && selectedConversation.ownerUid === user.uid ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (draft.trim()) {
-                        sendChatMessage(selectedConversation.id, `公告：${draft.trim()}`);
-                        setDraft("");
-                      }
-                    }}
-                    className="shrink-0 rounded-full bg-gold/25 px-3 text-xs font-bold text-pine"
-                  >
-                    公告
-                  </button>
-                ) : null}
                 <input
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder="輸入訊息..."
+                  disabled={!canSendSelectedConversation}
+                  placeholder={canSendSelectedConversation ? "輸入訊息..." : "等待主揪核准後才能發送訊息"}
                   className="min-w-0 flex-1 rounded-full border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
                 />
                 <button
                   type="submit"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-clay text-lg font-bold text-white"
+                  disabled={!canSendSelectedConversation}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white ${
+                    canSendSelectedConversation ? "bg-clay" : "bg-muted"
+                  }`}
                 >
                   ➤
                 </button>

@@ -91,6 +91,14 @@ export async function sendMessage(
   const t = content.trim();
   if (!t) throw new Error("訊息不可為空");
   if (t.length > 500) throw new Error("訊息不可超過 500 字");
+  const convRef = doc(db, "conversations", convId);
+  const convSnap = await getDoc(convRef);
+  const convData = convSnap.data();
+  const participants = (convData?.participants as string[] | undefined) ?? [];
+  if (convData?.type === "match" && senderUid !== "system" && !participants.includes(senderUid)) {
+    throw new Error("主揪核准前無法在此聊天室發送訊息");
+  }
+
   await addDoc(collection(db, "conversations", convId, "messages"), {
     senderUid,
     senderNickname,
@@ -100,9 +108,6 @@ export async function sendMessage(
     createdAt: serverTimestamp(),
   });
 
-  const convRef = doc(db, "conversations", convId);
-  const convSnap = await getDoc(convRef);
-  const participants = (convSnap.data()?.participants as string[] | undefined) ?? [];
   const updates: Record<string, unknown> = {
     lastMessage: t.slice(0, 50),
     lastSenderNickname: senderNickname,

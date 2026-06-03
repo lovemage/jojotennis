@@ -8,7 +8,7 @@ import type { TennisLevel } from "@/data/tennisLevels";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import { toUiMatch } from "@/lib/mappers";
-import type { Club as SchemaClub, Match as SchemaMatch, MatchApplication } from "@/lib/schema";
+import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
 type ProfileDashboardContextProps = {
@@ -16,20 +16,11 @@ type ProfileDashboardContextProps = {
   tennisLevels: TennisLevel[];
 };
 
-type TabId = "messages" | "profile" | "matches" | "clubs" | "coach";
-
-type JoinedClub = {
-  id: string;
-  name: string;
-  city: string;
-  tags: string[];
-  joinedAt: string;
-};
+type TabId = "messages" | "profile" | "matches" | "coach";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "profile", label: "👤 我的資料" },
   { id: "matches", label: "🎾 我的揪球" },
-  { id: "clubs", label: "👥 我的社團" },
   { id: "coach", label: "🎓 教練/學員" },
 ];
 
@@ -81,17 +72,10 @@ export default function ProfileDashboardContext({
   }, [user?.nickname]);
   const [expandedMatchId, setExpandedMatchId] = useState("");
   const [expandedMessageId, setExpandedMessageId] = useState("");
-  const [joinedClubs, setJoinedClubs] = useState<JoinedClub[]>([]);
   const [profileMatches, setProfileMatches] = useState<(SchemaMatch & { matchId: string })[]>(
     [],
   );
   const [profileApps, setProfileApps] = useState<MatchApplication[]>([]);
-  const [clubDirectory, setClubDirectory] = useState<Record<string, SchemaClub & { clubId: string }>>(
-    {},
-  );
-  const [confirmLeaveClub, setConfirmLeaveClub] = useState<JoinedClub | null>(
-    null,
-  );
 
   useEffect(() => {
     if (activeTab === "messages") {
@@ -134,60 +118,6 @@ export default function ProfileDashboardContext({
     return () => unsub();
   }, [user?.uid]);
 
-  useEffect(() => {
-    if (!user?.uid) return;
-    const unsubMembers = onSnapshot(
-      collection(db, "club_members"),
-      (snap) => {
-        const memberships = snap.docs
-          .map((d) => ({ memberId: d.id, ...d.data() }))
-          .filter(
-            (m) =>
-              (m as { uid?: string }).uid === user.uid &&
-              (m as { isActive?: boolean }).isActive !== false,
-          );
-        setJoinedClubs(
-          memberships.map((m) => {
-            const row = m as unknown as {
-              clubId: string;
-              nickname?: string;
-              joinedAt?: { toDate?: () => Date };
-            };
-            const club = clubDirectory[row.clubId];
-            return {
-              id: row.clubId,
-              name: club?.name ?? row.nickname ?? "社團",
-              city: club?.city ?? "",
-              tags: club?.types ?? [],
-              joinedAt: row.joinedAt?.toDate
-                ? row.joinedAt.toDate().toLocaleDateString("zh-TW")
-                : new Date().toLocaleDateString("zh-TW"),
-            };
-          }),
-        );
-      },
-      (err) => console.error("[club_members] 監聽失敗：", err.code, err.message),
-    );
-    return () => unsubMembers();
-  }, [user?.uid, clubDirectory]);
-
-  useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, "clubs"),
-      (snap) => {
-        const map: Record<string, SchemaClub & { clubId: string }> = {};
-        snap.docs.forEach((d) => {
-          if ((d.data() as SchemaClub).isDeleted !== true) {
-            map[d.id] = { clubId: d.id, ...d.data() } as SchemaClub & { clubId: string };
-          }
-        });
-        setClubDirectory(map);
-      },
-      (err) => console.error("[clubs] 監聽失敗：", err.code, err.message),
-    );
-    return () => unsub();
-  }, []);
-
   const myCreatedMatches = useMemo(() => {
     if (!user?.uid) return [];
     return profileMatches
@@ -216,14 +146,6 @@ export default function ProfileDashboardContext({
   function handleLogout() {
     logout();
     router.push("/");
-  }
-
-  function leaveClub(clubId: string) {
-    const nextClubs = joinedClubs.filter((club) => club.id !== clubId);
-
-    setJoinedClubs(nextClubs);
-    window.localStorage.setItem("jojo-tennis-joined-clubs", JSON.stringify(nextClubs));
-    setConfirmLeaveClub(null);
   }
 
   if (!user) {
@@ -601,38 +523,6 @@ export default function ProfileDashboardContext({
         </div>
       ) : null}
 
-      {activeTab === "clubs" ? (
-        <section className="mt-6 rounded-[1.5rem] bg-white p-5 ring-1 ring-parchment">
-          <h2 className="text-xl font-bold text-pine">我加入的社團</h2>
-          <div className="mt-4 space-y-3">
-            {joinedClubs.length > 0 ? (
-              joinedClubs.map((club) => (
-                <article key={club.id} className="rounded-2xl bg-ivory p-4">
-                  <h3 className="font-bold text-pine">{club.name}</h3>
-                  <p className="mt-1 text-sm text-muted">{club.city}</p>
-                  <p className="mt-2 text-xs text-muted">加入時間：{club.joinedAt}</p>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmLeaveClub(club)}
-                    className="mt-3 rounded-full border border-pine px-4 py-2 text-sm font-bold text-pine"
-                  >
-                    退出社團
-                  </button>
-                </article>
-              ))
-            ) : (
-              <p className="text-sm text-muted">還沒有加入社團</p>
-            )}
-          </div>
-          <Link
-            href="/club"
-            className="mt-4 flex rounded-full bg-clay px-4 py-3 text-center text-sm font-bold text-white"
-          >
-            <span className="w-full">探索社團 →</span>
-          </Link>
-        </section>
-      ) : null}
-
       {activeTab === "coach" ? (
         <div className="mt-6 space-y-6">
           <section className="rounded-[1.5rem] bg-white p-5 ring-1 ring-parchment">
@@ -686,30 +576,6 @@ export default function ProfileDashboardContext({
         </div>
       ) : null}
 
-      {confirmLeaveClub ? (
-        <div className="fixed inset-0 z-50 flex items-center bg-ink/50 p-4">
-          <div className="mx-auto w-full max-w-md rounded-[1.5rem] bg-white p-5">
-            <h2 className="text-xl font-bold text-pine">確認退出社團？</h2>
-            <p className="mt-3 text-sm text-muted">{confirmLeaveClub.name}</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmLeaveClub(null)}
-                className="rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => leaveClub(confirmLeaveClub.id)}
-                className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
-              >
-                確認退出
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

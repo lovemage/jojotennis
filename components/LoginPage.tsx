@@ -194,9 +194,9 @@ export default function LoginPage() {
         <p className="mt-4 leading-7 text-parchment">找球友・找球場・找教練，從這裡開始</p>
       </div>
 
-      {lineBrowserChecked && !isLineBrowser ? (
+      {lineBrowserChecked && isLineBrowser ? (
         <div className="mt-5 rounded-2xl border border-[#06C755]/30 bg-[#06C755]/10 p-4 text-sm leading-6 text-pine">
-          系統偵測你目前不是在 LINE 內建瀏覽器中開啟。建議使用 LINE 登入，完成後會自動回到揪揪網球。
+          系統偵測你正在 LINE 內建瀏覽器中開啟。請使用 LINE 登入，完成後會自動回到揪揪網球。
         </div>
       ) : null}
 
@@ -301,9 +301,9 @@ export default function LoginPage() {
               <span className="h-px flex-1 bg-parchment" />
             </div>
 
-            <a href="/api/auth/line/login" className="block w-full overflow-hidden rounded">
+            <a href="/api/auth/line/login" className="block w-full overflow-hidden rounded-full">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/auth/line-login-base.png" alt="Log in with LINE" className="h-11 w-full object-contain" />
+              <img src="/icons/auth/line-login-base.png" alt="Log in with LINE" className="h-11 w-full rounded-full object-contain" />
             </a>
 
             <button type="button" onClick={openGoogleNotice} className="block w-full overflow-hidden rounded">

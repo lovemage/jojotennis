@@ -11,7 +11,6 @@ const links: Array<{ href: string; label: string }> = [
   { href: "/coach", label: "找教練" },
   { href: "/reviews", label: "球具評測" },
   { href: "/news", label: "網球新聞" },
-  { href: "/club", label: "社團" },
   { href: "/ntrp", label: "NTRP 等級指南" },
 ];
 

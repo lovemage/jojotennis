@@ -49,17 +49,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="club"
-        options={{
-          title: '社團',
-          tabBarIcon: () => <TabMark label="04" />,
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
           title: '我的',
-          tabBarIcon: () => <TabMark label="05" />,
+          tabBarIcon: () => <TabMark label="04" />,
         }}
       />
     </Tabs>

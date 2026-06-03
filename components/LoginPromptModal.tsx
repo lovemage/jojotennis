@@ -18,7 +18,7 @@ export default function LoginPromptModal({
       <div className="mx-auto w-full max-w-md rounded-[1.5rem] bg-white p-5 shadow-lg">
         <h2 className="text-xl font-bold text-pine">請先登入</h2>
         <p className="mt-3 text-sm leading-6 text-muted">
-          登入後即可使用揪球、社團、找教練等完整功能
+          登入後即可使用揪球、找教練等完整功能
         </p>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button
