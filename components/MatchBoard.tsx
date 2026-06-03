@@ -181,6 +181,10 @@ export default function MatchBoard() {
   }
 
   async function joinMatch(match: Match, joinCode?: string) {
+    if (joinBusy) {
+      return;
+    }
+
     if (!user) {
       setShowLoginPrompt(true);
       return;
@@ -196,7 +200,10 @@ export default function MatchBoard() {
 
     setJoinBusy(true);
     setJoinError("");
-    const result = await applyMatch(match.id, joinCode);
+    const result = await applyMatch(match.id, joinCode).catch((error) => ({
+      ok: false,
+      msg: error instanceof Error ? error.message : "加入球局失敗，請稍後再試",
+    }));
     setJoinBusy(false);
 
     if (!result.ok) {
@@ -373,16 +380,18 @@ export default function MatchBoard() {
                   </button>
                   <button
                     type="button"
-                    disabled={hasApplied || isOwner || isFull}
+                    disabled={joinBusy || hasApplied || isOwner || isFull}
                     onClick={(event) => {
                       event.stopPropagation();
                       void joinMatch(match);
                     }}
                     className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
-                      hasApplied || isOwner || isFull ? "bg-muted" : "bg-clay"
+                      joinBusy || hasApplied || isOwner || isFull ? "bg-muted" : "bg-clay"
                     }`}
                   >
-                    {myApplication?.status === "accepted"
+                    {joinBusy
+                      ? "處理中"
+                      : myApplication?.status === "accepted"
                       ? "已加入"
                       : myApplication?.status === "pending"
                         ? "待主揪核准"

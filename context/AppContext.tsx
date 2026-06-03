@@ -723,22 +723,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const joinMode = match.joinMode ?? "approval";
 
       if (USE_FIREBASE) {
-        const result =
-          joinMode === "private"
-            ? await joinMatchWithCode(matchId, joinCode ?? "", user.uid, user.nickname)
-            : await applyToMatch(matchId, user.uid, user.nickname);
+        try {
+          const result =
+            joinMode === "private"
+              ? await joinMatchWithCode(matchId, joinCode ?? "", user.uid, user.nickname)
+              : await applyToMatch(matchId, user.uid, user.nickname);
 
-        if (result.ok && joinMode === "approval") {
-          sendMessage({
-            type: "match_request",
-            fromUid: user.uid,
-            fromNickname: user.nickname,
-            toUid: match.ownerUid,
-            content: `${user.nickname} 申請加入你的「${match.title}」，請確認是否接受。`,
-            relatedId: matchId,
-          });
+          if (result.ok && joinMode === "approval") {
+            sendMessage({
+              type: "match_request",
+              fromUid: user.uid,
+              fromNickname: user.nickname,
+              toUid: match.ownerUid,
+              content: `${user.nickname} 申請加入你的「${match.title}」，請確認是否接受。`,
+              relatedId: matchId,
+            });
+          }
+          return result;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (message.includes("Quota exceeded") || message.includes("resource-exhausted")) {
+            return { ok: false, msg: "Firebase 配額已用完，暫時無法加入球局。請稍後再試。" };
+          }
+          return { ok: false, msg: message || "加入球局失敗，請稍後再試" };
         }
-        return result;
       }
 
       if (joinMode === "private") {
