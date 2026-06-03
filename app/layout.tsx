@@ -23,9 +23,9 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://jojotennis.com"),
   title: "揪揪網球 JoJo Tennis｜找球友・找球場・台灣網球社群",
   description:
-    "全台最大網球社群平台。搜尋全台 40+ 網球場地、智慧媒合球友、加入在地社團，讓每一次打球都更容易。",
+    "全台最大網球社群平台。搜尋全台 40+ 網球場地、智慧媒合球友、找教練，讓每一次打球都更容易。",
   keywords:
-    "網球, 找球友, 網球場, 台灣網球, NTRP, 約球, 網球社團, 網球教練, tennis Taiwan",
+    "網球, 找球友, 網球場, 台灣網球, NTRP, 約球, 網球教練, tennis Taiwan",
   alternates: {
     canonical: "/",
   },
@@ -35,9 +35,12 @@ export const metadata: Metadata = {
     title: "JoJo Tennis",
     statusBarStyle: "default",
   },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   openGraph: {
     title: "揪揪網球｜找球友・找球場・台灣網球社群",
-    description: "搜尋全台 40+ 網球場地，媒合球友，找教練，加入社團。",
+    description: "搜尋全台 40+ 網球場地，媒合球友，找教練。",
     url: "https://jojotennis.com",
     siteName: "揪揪網球 JoJo Tennis",
     locale: "zh_TW",

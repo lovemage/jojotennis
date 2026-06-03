@@ -25,6 +25,19 @@ function formatTime(value?: number) {
   });
 }
 
+function conversationTitle(conversation: Pick<Conversation, "id" | "name" | "type">) {
+  return conversation.name?.trim() || (conversation.type === "match" ? "揪球聊天室" : "未命名對話");
+}
+
+function conversationInitial(conversation: Pick<Conversation, "id" | "name" | "type">) {
+  if (conversation.type === "match") return "🎾";
+  return conversationTitle(conversation).slice(0, 1);
+}
+
+function shortUid(uid?: string) {
+  return uid ? uid.slice(0, 6) : "未知";
+}
+
 function MessagesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -59,9 +72,10 @@ function MessagesPageContent() {
     () =>
       conversations.filter((conversation) => {
         const matchesTab = tab === "all" || conversation.type === tab;
+        const title = conversationTitle(conversation).toLowerCase();
         const matchesQuery =
           query.trim().length === 0 ||
-          conversation.name.toLowerCase().includes(query.trim().toLowerCase()) ||
+          title.includes(query.trim().toLowerCase()) ||
           (conversation.lastMessage ?? "").toLowerCase().includes(query.trim().toLowerCase());
         return matchesTab && matchesQuery;
       }),
@@ -226,10 +240,10 @@ function MessagesPageContent() {
                   }`}
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pine text-sm font-bold text-white">
-                    {conversation.type === "match" ? "🎾" : conversation.name.slice(0, 1)}
+                    {conversationInitial(conversation)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-pine">{conversation.name}</span>
+                    <span className="block truncate text-sm font-bold text-pine">{conversationTitle(conversation)}</span>
                     <span className="block truncate text-xs text-muted">
                       {conversation.lastMessage || "尚無訊息"}
                     </span>
@@ -282,7 +296,7 @@ function MessagesPageContent() {
                   </button>
                 ) : null}
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-lg font-bold text-pine">{selectedConversation.name}</h2>
+                  <h2 className="truncate text-lg font-bold text-pine">{conversationTitle(selectedConversation)}</h2>
                   <p className="mt-0.5 text-xs text-muted">
                     {selectedConversation.type === "match"
                       ? canSendSelectedConversation
@@ -309,8 +323,8 @@ function MessagesPageContent() {
                             >
                               <span>{applicant.nickname}</span>
                               <span>· {applicant.status === "pending" ? "待核准" : "已加入"}</span>
-                              <span>· UID: {applicant.uid.slice(0, 6)}</span>
-                              <UserStatsBadge uid={applicant.uid} />
+                              <span>· UID: {shortUid(applicant.uid)}</span>
+                              {applicant.uid ? <UserStatsBadge uid={applicant.uid} /> : null}
                             </span>
                           ))}
                       </div>

@@ -33,12 +33,19 @@ export async function submitReview(input: {
 }
 
 export async function getAttendanceStats(uid: string): Promise<AttendanceStats> {
+  const emptyStats = {
+    obligationCount: 0,
+    attendedCount: 0,
+    attendanceRate: computeBayesianRate(0, 0),
+    averageStars: null,
+  };
+
   if (!hasSupabaseConfig()) {
-    return { obligationCount: 0, attendedCount: 0, attendanceRate: computeBayesianRate(0, 0), averageStars: null };
+    return emptyStats;
   }
 
   const supabase = getSupabaseBrowserClient();
-  const [{ data: obligations }, { data: reviews }] = await Promise.all([
+  const [{ data: obligations, error: obligationsError }, { data: reviews, error: reviewsError }] = await Promise.all([
     supabase
       .from("match_attendance_obligations")
       .select("status")
@@ -46,6 +53,14 @@ export async function getAttendanceStats(uid: string): Promise<AttendanceStats> 
       .not("status", "in", '("cancelled","host_cancelled","early_withdrawn")'),
     supabase.from("match_reviews").select("stars").eq("reviewee_uid", uid).not("stars", "is", null),
   ]);
+
+  if (obligationsError || reviewsError) {
+    console.warn(
+      "[reviews] Supabase attendance stats unavailable:",
+      obligationsError?.message ?? reviewsError?.message,
+    );
+    return emptyStats;
+  }
 
   const obligationCount = obligations?.length ?? 0;
   const attendedCount = obligations?.filter((row) => row.status === "attended").length ?? 0;
