@@ -266,7 +266,7 @@ export function useFirebaseInboxListener(
   }, [enabled, userUid, setMessages]);
 }
 
-/** conversations metadata only (no per-message subs — those are lazy on the messages page) */
+/** conversations metadata only; chat message bodies are loaded from Upstash Redis on the messages page. */
 export function useFirebaseConversationListeners(
   enabled: boolean,
   userUid: string | undefined,

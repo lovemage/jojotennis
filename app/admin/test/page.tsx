@@ -142,7 +142,7 @@ export default function AdminTestPage() {
           <p className="font-semibold text-pine">Firebase Console 確認</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>matches 的 isDeleted / filledSlots 正確</li>
-            <li>conversations/messages subcollection 有即時寫入</li>
+            <li>conversations metadata 正確，聊天訊息寫入 Upstash Redis</li>
             <li>heart_records 不可重複（同一 matchId+fromUid+toUid）</li>
           </ul>
         </div>

@@ -239,8 +239,12 @@ export async function deleteConversationById(conversationId: string): Promise<vo
 }
 
 export async function deleteConversationMessageById(
-  conversationId: string,
-  messageId: string,
+  _conversationId: string,
+  _messageId: string,
 ): Promise<void> {
-  await deleteDoc(doc(db, "conversations", conversationId, "messages", messageId));
+  // Chat message bodies are stored in Upstash Redis, not Firestore.
+  // Keep this as a no-op so admin UI can optimistically remove a message locally
+  // without touching the old Firestore messages subcollection.
+  void _conversationId;
+  void _messageId;
 }
