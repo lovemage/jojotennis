@@ -1,12 +1,10 @@
 import { auth, db } from "./firebase";
 import {
   collection,
-  addDoc,
   doc,
   updateDoc,
   setDoc,
   getDoc,
-  getDocs,
   onSnapshot,
   query,
   orderBy,
@@ -18,6 +16,22 @@ import {
   increment,
 } from "firebase/firestore";
 import type { Conversation, Message } from "./schema";
+
+async function getAuthHeader() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("需要登入");
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function fetchChatMessages(convId: string): Promise<Message[]> {
+  const headers = await getAuthHeader();
+  const response = await fetch(`/api/chat/messages?conversationId=${encodeURIComponent(convId)}`, {
+    headers,
+  });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "讀取訊息失敗");
+  const data = (await response.json()) as { messages?: Message[] };
+  return data.messages ?? [];
+}
 
 export async function getOrCreateDirectConversation(
   userBUid: string,
@@ -91,35 +105,40 @@ export async function sendMessage(
   const t = content.trim();
   if (!t) throw new Error("訊息不可為空");
   if (t.length > 500) throw new Error("訊息不可超過 500 字");
-  const convRef = doc(db, "conversations", convId);
-  const convSnap = await getDoc(convRef);
-  const convData = convSnap.data();
-  const participants = (convData?.participants as string[] | undefined) ?? [];
-  if (convData?.type === "match" && senderUid !== "system" && !participants.includes(senderUid)) {
-    throw new Error("主揪核准前無法在此聊天室發送訊息");
+
+  const headers = await getAuthHeader();
+  const response = await fetch("/api/chat/messages", {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      conversationId: convId,
+      senderUid,
+      senderNickname,
+      content: t,
+      type: senderUid === "system" ? "system" : "text",
+    }),
+  });
+  if (!response.ok) {
+    throw new Error((await response.json().catch(() => null))?.error || "訊息送出失敗");
   }
 
-  await addDoc(collection(db, "conversations", convId, "messages"), {
-    senderUid,
-    senderNickname,
-    content: t,
-    msgType: "text",
-    readBy: [senderUid],
-    createdAt: serverTimestamp(),
-  });
-
-  const updates: Record<string, unknown> = {
+  const convRef = doc(db, "conversations", convId);
+  const convSnap = await getDoc(convRef);
+  const participants = (convSnap.data()?.participants as string[] | undefined) ?? [];
+  await updateDoc(convRef, {
     lastMessage: t.slice(0, 50),
     lastSenderNickname: senderNickname,
     lastMessageTime: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  };
-  for (const uid of participants) {
-    if (uid && uid !== senderUid) {
-      updates[`unreadByUid.${uid}`] = increment(1);
-    }
-  }
-  await updateDoc(convRef, updates);
+    ...Object.fromEntries(
+      participants
+        .filter((uid) => uid && uid !== senderUid)
+        .map((uid) => [`unreadByUid.${uid}`, increment(1)]),
+    ),
+  }).catch(() => undefined);
 
   void (async () => {
     try {
@@ -141,30 +160,31 @@ export async function sendMessage(
 
 export async function sendSystemMessage(convId: string, content: string): Promise<void> {
   try {
-    await addDoc(collection(db, "conversations", convId, "messages"), {
-      senderUid: "system",
-      senderNickname: "揪揪網球",
-      content,
-      msgType: "system",
-      readBy: [],
-      createdAt: serverTimestamp(),
-    });
-    await updateDoc(doc(db, "conversations", convId), {
-      lastMessage: content.slice(0, 50),
-      lastSenderNickname: "系統",
-      updatedAt: serverTimestamp(),
-    });
+    await sendMessage(convId, "system", "揪揪網球", content);
   } catch {
     // ignore
   }
 }
 
-export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) =>
-  onSnapshot(
-    query(collection(db, "conversations", convId, "messages"), orderBy("createdAt", "asc")),
-    (snap) => cb(snap.docs.map((d) => ({ msgId: d.id, ...d.data() } as Message))),
-    (err) => console.error("[messages] 監聽失敗：", err.code, err.message),
-  );
+export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) => {
+  let stopped = false;
+
+  async function load() {
+    try {
+      const messages = await fetchChatMessages(convId);
+      if (!stopped) cb(messages);
+    } catch (err) {
+      console.error("[messages] 讀取失敗：", err);
+    }
+  }
+
+  void load();
+  const timer = window.setInterval(() => void load(), 3000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+  };
+};
 
 export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) => void) =>
   onSnapshot(
@@ -182,16 +202,6 @@ export async function markConversationMessagesRead(convId: string, uid: string):
   await updateDoc(doc(db, "conversations", convId), {
     [`unreadByUid.${uid}`]: 0,
   }).catch(() => undefined);
-
-  const snap = await getDocs(collection(db, "conversations", convId, "messages"));
-  const updates = snap.docs.filter((d) => {
-    const data = d.data();
-    const readBy = (data.readBy as string[] | undefined) ?? [];
-    return data.senderUid !== uid && data.senderUid !== "system" && !readBy.includes(uid);
-  });
-  await Promise.all(
-    updates.map((d) => updateDoc(d.ref, { readBy: arrayUnion(uid) })),
-  );
 }
 
 export async function upsertConversationSnapshot(data: {

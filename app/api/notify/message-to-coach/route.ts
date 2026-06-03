@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emailClient";
 import TemplatedEmail from "@/emails/TemplatedEmail";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { listRedisChatMessages } from "@/lib/upstashChat";
 import { notifyUser } from "@/lib/notificationTriggers";
 import {
   EMAIL_TEMPLATE_DEFAULTS,
@@ -80,15 +81,14 @@ export async function POST(request: Request) {
   const senderName = sender.nickname || "一位學員";
   const recipientName = recipient.nickname || "教練";
 
-  // 判定是否為對話中該 sender 的第一則訊息
-  const msgQuery = await firestore
-    .collection("conversations")
-    .doc(body.convId)
-    .collection("messages")
-    .where("senderUid", "==", body.senderUid)
-    .limit(2)
-    .get();
-  const isFirstMessage = msgQuery.size === 1;
+  // 判定是否為對話中該 sender 的第一則訊息。聊天內容已改存 Upstash Redis。
+  let isFirstMessage = false;
+  try {
+    const messages = await listRedisChatMessages(body.convId);
+    isFirstMessage = messages.filter((message) => message.senderUid === body.senderUid).length === 1;
+  } catch {
+    isFirstMessage = false;
+  }
 
   const appBaseUrl = (process.env.APP_BASE_URL ?? "https://jojotennis.com").replace(/\/$/, "");
   const messagesUrl = appBaseUrl + EMAIL_TEMPLATE_DEFAULT_CTA_PATH.message_to_coach;
