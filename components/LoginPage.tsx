@@ -301,14 +301,14 @@ export default function LoginPage() {
               <span className="h-px flex-1 bg-parchment" />
             </div>
 
-            <a href="/api/auth/line/login" className="block w-full overflow-hidden rounded-full">
+            <a href="/api/auth/line/login" className="block h-10 w-full overflow-hidden rounded">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/auth/line-login-base.png" alt="Log in with LINE" className="h-11 w-full rounded-full object-contain" />
+              <img src="/icons/auth/line-login-base.png" alt="Log in with LINE" className="h-10 w-full rounded object-contain" />
             </a>
 
-            <button type="button" onClick={openGoogleNotice} className="block w-full overflow-hidden rounded">
+            <button type="button" onClick={openGoogleNotice} className="block h-10 w-full overflow-hidden rounded">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/auth/google-continue-light.svg" alt="Continue with Google" className="h-10 w-full object-contain" />
+              <img src="/icons/auth/google-continue-light.svg" alt="Continue with Google" className="h-10 w-full rounded object-contain" />
             </button>
 
             <p className="text-center text-sm text-muted">

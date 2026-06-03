@@ -3,9 +3,11 @@ import "server-only";
 const LINE_AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
 const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const LINE_PROFILE_URL = "https://api.line.me/v2/profile";
-const LINE_CALLBACK_PATH = "/api/auth/line/callback";
+const LINE_CALLBACK_PATH = "/callback";
 
 function getLineRedirectUri(baseUrl: string) {
+  const configuredRedirectUri = process.env.LINE_LOGIN_REDIRECT_URI?.trim();
+  if (configuredRedirectUri) return configuredRedirectUri;
   return new URL(LINE_CALLBACK_PATH, baseUrl).toString();
 }
 
