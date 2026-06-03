@@ -11,8 +11,8 @@
     "supabase:test-create-table": "node scripts/testSupabaseCreateTable.mjs",
     "supabase:create-users-table": "node scripts/createSupabaseUsersTable.mjs",
     "gen-image": "node --env-file=.env.local scripts/generateImage.mjs",
-    "deploy:preview": "netlify deploy --build",
-    "deploy:prod": "netlify deploy --build --prod"
+    "deploy:preview": "vercel",
+    "deploy:prod": "vercel --prod"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",
@@ -37,7 +37,6 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^5.15.11",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
