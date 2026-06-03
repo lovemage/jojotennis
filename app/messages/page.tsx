@@ -38,6 +38,11 @@ function shortUid(uid?: string) {
   return uid ? uid.slice(0, 6) : "未知";
 }
 
+function reportApproveError(error: unknown) {
+  const message = error instanceof Error ? error.message : "操作失敗";
+  alert(message.includes("Quota exceeded") ? "Firebase 配額已用完，暫時無法更新核准狀態。" : message);
+}
+
 function MessagesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -304,9 +309,7 @@ function MessagesPageContent() {
                         : "等待主揪核准"
                       : "私人對話"}
                   </p>
-                  {selectedConversation.type === "match" &&
-                  selectedMatch &&
-                  selectedMatch.ownerUid === user.uid ? (
+                  {isMatchHost && selectedMatch ? (
                     <div className="mt-2 space-y-2">
                       <div className="flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
                         {selectedMatch.applicants
@@ -337,14 +340,18 @@ function MessagesPageContent() {
                               <div className="flex shrink-0 gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => respondToApplicant(selectedMatch.id, applicant.uid, true)}
+                                  onClick={() => {
+                                    void Promise.resolve(respondToApplicant(selectedMatch.id, applicant.uid, true)).catch(reportApproveError);
+                                  }}
                                   className="rounded-full bg-pine px-3 py-1 font-bold text-white"
                                 >
                                   同意
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => respondToApplicant(selectedMatch.id, applicant.uid, false)}
+                                  onClick={() => {
+                                    void Promise.resolve(respondToApplicant(selectedMatch.id, applicant.uid, false)).catch(reportApproveError);
+                                  }}
                                   className="rounded-full border border-amber-300 px-3 py-1 font-bold text-amber-900"
                                 >
                                   婉拒

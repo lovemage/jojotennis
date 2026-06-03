@@ -785,6 +785,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (matchId: string, applicantUid: string, accept: boolean) => {
       const match = (displayMatches).find((m) => m.id === matchId);
       if (!match) return;
+      if (match.ownerUid !== user?.uid) {
+        throw new Error("只有主揪可以核准或婉拒球友");
+      }
       const applicant = match.applicants.find((a) => a.uid === applicantUid);
       if (!applicant) return;
 

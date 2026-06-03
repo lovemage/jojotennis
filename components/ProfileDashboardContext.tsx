@@ -49,6 +49,11 @@ function getApplicantStatusLabel(status: string) {
   return "等待主揪回覆";
 }
 
+function reportApplicantActionError(error: unknown) {
+  const message = error instanceof Error ? error.message : "操作失敗";
+  alert(message.includes("Quota exceeded") ? "Firebase 配額已用完，暫時無法更新核准狀態。" : message);
+}
+
 export default function ProfileDashboardContext({
   cities,
   tennisLevels,
@@ -279,26 +284,22 @@ export default function ProfileDashboardContext({
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         <button
                           type="button"
-                          onClick={() =>
-                            respondToApplicant(
-                              message.relatedId!,
-                              message.fromUid,
-                              true,
-                            )
-                          }
+                          onClick={() => {
+                            void Promise.resolve(
+                              respondToApplicant(message.relatedId!, message.fromUid, true),
+                            ).catch(reportApplicantActionError);
+                          }}
                           className="rounded-full bg-green-600 px-4 py-2 text-sm font-bold text-white"
                         >
                           接受
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            respondToApplicant(
-                              message.relatedId!,
-                              message.fromUid,
-                              false,
-                            )
-                          }
+                          onClick={() => {
+                            void Promise.resolve(
+                              respondToApplicant(message.relatedId!, message.fromUid, false),
+                            ).catch(reportApplicantActionError);
+                          }}
                           className="rounded-full border border-pine px-4 py-2 text-sm font-bold text-pine"
                         >
                           婉拒
@@ -440,18 +441,22 @@ export default function ProfileDashboardContext({
                               <div className="mt-2 grid grid-cols-2 gap-3">
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    respondToApplicant(match.id, applicant.uid, true)
-                                  }
+                                  onClick={() => {
+                                    void Promise.resolve(
+                                      respondToApplicant(match.id, applicant.uid, true),
+                                    ).catch(reportApplicantActionError);
+                                  }}
                                   className="rounded-full bg-green-600 px-4 py-2 text-sm font-bold text-white"
                                 >
                                   接受
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    respondToApplicant(match.id, applicant.uid, false)
-                                  }
+                                  onClick={() => {
+                                    void Promise.resolve(
+                                      respondToApplicant(match.id, applicant.uid, false),
+                                    ).catch(reportApplicantActionError);
+                                  }}
                                   className="rounded-full border border-pine px-4 py-2 text-sm font-bold text-pine"
                                 >
                                   婉拒

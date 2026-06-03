@@ -1,5 +1,6 @@
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 import type { AttendanceStats } from "./supabase.types";
+import { ENABLE_SUPABASE_REVIEWS } from "./config";
 
 export function computeBayesianRate(attendedCount: number, obligationCount: number) {
   return (attendedCount + 3) / (obligationCount + 4);
@@ -40,7 +41,7 @@ export async function getAttendanceStats(uid: string): Promise<AttendanceStats> 
     averageStars: null,
   };
 
-  if (!hasSupabaseConfig()) {
+  if (!ENABLE_SUPABASE_REVIEWS || !hasSupabaseConfig()) {
     return emptyStats;
   }
 

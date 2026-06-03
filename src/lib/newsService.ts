@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 import type { NewsArticle } from "@/data/news";
 import { uploadDataUrlImage, uploadImageFile } from "./uploadMedia";
-import { USE_SUPABASE } from "./config";
+import { ENABLE_SUPABASE_NEWS, USE_SUPABASE } from "./config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
 function toNewsArticle(id: string, data: Record<string, unknown>): NewsArticle {
@@ -78,7 +78,7 @@ function subscribeToFirestoreNews(cb: (articles: NewsArticle[]) => void) {
 }
 
 export function subscribeToNews(cb: (articles: NewsArticle[]) => void) {
-  if (USE_SUPABASE && hasSupabaseConfig()) {
+  if (USE_SUPABASE && ENABLE_SUPABASE_NEWS && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
     let active = true;
     let fallbackUnsub: (() => void) | null = null;
