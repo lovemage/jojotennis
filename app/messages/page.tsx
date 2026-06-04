@@ -17,8 +17,14 @@ function formatTime(value?: number) {
   });
 }
 
+function safeText(value: unknown, fallback = "") {
+  if (typeof value === "string") return value.trim();
+  return fallback;
+}
+
 function conversationTitle(conversation: Pick<Conversation, "id" | "name" | "type">) {
-  return conversation.name?.trim() || (conversation.type === "match" ? "揪球聊天室" : "未命名對話");
+  const name = safeText(conversation.name, "");
+  return name || (conversation.type === "match" ? "揪球聊天室" : "未命名對話");
 }
 
 function shortUid(uid?: string) {
@@ -52,14 +58,29 @@ function MessagesPageContent() {
   const safeConversationMessages = useMemo<ChatMessage[]>(() => {
     const source = getConversationMessages(selectedId);
     if (!Array.isArray(source)) return [];
-    return source.filter(
-      (message): message is ChatMessage =>
-        !!message &&
-        typeof message.id === "string" &&
-        typeof message.senderUid === "string" &&
-        typeof message.senderNickname === "string" &&
-        typeof message.content === "string",
-    );
+    return source
+      .map((message) => {
+        if (!message || typeof message !== "object") return null;
+        const candidate = message as Partial<ChatMessage> & { timestamp?: unknown };
+        const senderUid = safeText(candidate.senderUid, "");
+        const senderNickname = safeText(candidate.senderNickname, "");
+        const content = safeText(candidate.content, "");
+        if (!senderUid || !content) return null;
+
+        return {
+          id: safeText(candidate.id, `msg-${Date.now()}`),
+          senderUid,
+          senderNickname,
+          content,
+          timestamp: typeof candidate.timestamp === "number" ? candidate.timestamp : Date.now(),
+          type: candidate.type === "system" ? "system" : "text",
+          readBy: Array.isArray(candidate.readBy)
+            ? candidate.readBy.filter((uid): uid is string => typeof uid === "string")
+            : [],
+        };
+      })
+      .filter((message): message is ChatMessage => message !== null)
+      .filter((message) => !!message.senderUid);
   }, [getConversationMessages, selectedId]);
 
   const selectedConversation: Conversation | undefined = useMemo(() => {
@@ -69,30 +90,54 @@ function MessagesPageContent() {
       const matchId = selectedId.replace(/^match_/, "");
       const match = matches.find((item) => item.id === matchId);
       if (match) {
+        const participants = Array.isArray(match.applicants)
+          ? match.applicants
+              .filter((applicant) => applicant.status === "accepted")
+              .map((applicant) => safeText(applicant.uid, ""))
+              .filter(Boolean)
+          : [];
         return {
           id: selectedId,
           type: "match",
-          participants: [
-            match.ownerUid,
-            ...match.applicants.filter((app) => app.status === "accepted").map((app) => app.uid),
-          ],
-          name: `揪球：${match.title}`,
+          participants: [safeText(match.ownerUid, ""), ...participants].filter(Boolean),
+          name: `揪球：${safeText(match.title, "球局")}`,
           relatedId: match.id,
           messages: safeConversationMessages,
           unreadCount: 0,
-          ownerUid: match.ownerUid,
+          ownerUid: safeText(match.ownerUid),
         };
       }
     }
 
     const existing = conversations.find((conversation) => conversation.id === selectedId);
-    return existing ? { ...existing, messages: safeConversationMessages } : undefined;
+    if (!existing) return undefined;
+
+    const type =
+      existing.type === "match" || existing.type === "club" || existing.type === "direct"
+        ? existing.type
+        : "direct";
+
+    return {
+      ...existing,
+      type,
+      participants: Array.isArray(existing.participants)
+        ? existing.participants.filter((uid) => typeof uid === "string").map(String)
+        : [],
+      name: safeText(existing.name, "未命名對話"),
+      ownerUid: safeText(existing.ownerUid) || undefined,
+      messages: safeConversationMessages,
+    };
   }, [selectedId, conversations, matches, safeConversationMessages]);
 
-  const selectedMatch = matches.find((match) => match.id === selectedConversation?.relatedId);
-  const selectedApplicant = selectedMatch?.applicants.find((applicant) => applicant.uid === user?.uid);
+  const selectedMatch = matches.find(
+    (match) =>
+      match.id === selectedConversation?.relatedId ||
+      (typeof selectedConversation?.id === "string" && selectedConversation.id === `match_${match.id}`),
+  );
+  const selectedMatchApplicants = Array.isArray(selectedMatch?.applicants) ? selectedMatch.applicants : [];
+  const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
-  const pendingApplicants = selectedMatch?.applicants.filter((applicant) => applicant.status === "pending") ?? [];
+  const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
   const canSendSelectedConversation =
     !selectedConversation ||
     selectedConversation.type !== "match" ||
@@ -186,7 +231,7 @@ function MessagesPageContent() {
                   {isMatchHost && selectedMatch ? (
                     <div className="mt-2 space-y-2">
                       <div className="flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
-                        {selectedMatch.applicants
+                        {selectedMatchApplicants
                           .filter(
                             (applicant) =>
                               applicant.status === "accepted" || applicant.status === "pending",
@@ -265,7 +310,7 @@ function MessagesPageContent() {
                               message.type === "system" &&
                               message.content.includes("主揪已")
                             ) {
-                              const applicant = selectedMatch.applicants.find((item) =>
+                              const applicant = selectedMatchApplicants.find((item) =>
                                 message.content.includes(item.nickname),
                               );
                               if (applicant) {
