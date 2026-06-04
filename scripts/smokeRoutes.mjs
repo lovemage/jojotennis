@@ -165,6 +165,18 @@ async function checkAdminRedirects() {
   }
 }
 
+async function checkAdminCookiePages() {
+  const headers = { Cookie: "jojo_session=1; jojo_admin=1" };
+  for (const path of adminRoutes) {
+    const { response, text } = await request(path, { headers });
+    assert(response.status === 200, `Admin cookie ${path} expected 200, got ${response.status}`);
+    assert(text.length > 0, `Admin cookie ${path} returned empty body`);
+    assert(!text.includes('__next_error__'), `Admin cookie ${path} rendered Next error shell`);
+    assert(!text.includes("Application error"), `Admin cookie ${path} rendered application error`);
+    console.log(`admin-cookie ${response.status} ${path}`);
+  }
+}
+
 async function checkUnauthApis() {
   for (const [path, expected] of unauthApiRoutes) {
     const { response, json } = await request(path);
@@ -283,6 +295,7 @@ async function main() {
   await checkManifestCoverage();
   await checkPages();
   await checkAdminRedirects();
+  await checkAdminCookiePages();
   await checkUnauthApis();
   await checkApiMethods();
   await checkMatchLoop();
