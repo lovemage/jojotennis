@@ -110,6 +110,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const convId = url.searchParams.get("conversationId")?.trim();
   if (!convId) return NextResponse.json({ error: "Missing conversationId" }, { status: 400 });
+  const rawLimit = Number(url.searchParams.get("limit") ?? "30");
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 300) : 30;
 
   const conv = await resolveConversation(convId);
   if (!conv) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
@@ -122,7 +124,7 @@ export async function GET(request: Request) {
   if (!canRead) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const messages = await listRedisChatMessages(convId);
+    const messages = await listRedisChatMessages(convId, limit);
     return NextResponse.json({ messages });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Redis unavailable";

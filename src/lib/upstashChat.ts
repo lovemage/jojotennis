@@ -75,9 +75,13 @@ export async function appendRedisChatMessage(
   return stored;
 }
 
-export async function listRedisChatMessages(conversationId: string): Promise<RedisChatMessage[]> {
+export async function listRedisChatMessages(
+  conversationId: string,
+  limit = 30,
+): Promise<RedisChatMessage[]> {
   const redis = getRedis();
-  const rows = await redis.lrange<string>(messageKey(conversationId), 0, -1);
+  const maxItems = Math.max(1, Math.min(1000, Number.isFinite(limit) ? Math.floor(limit) : 30));
+  const rows = await redis.lrange<string>(messageKey(conversationId), -maxItems, -1);
   return rows
     .map((row) => {
       try {
