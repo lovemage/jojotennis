@@ -517,24 +517,27 @@ export async function sendSystemMessage(convId: string, content: string): Promis
   }
 }
 
-export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) => {
+export const subscribeToMessages = (
+  convId: string,
+  cb: (m: Message[], state?: { source: "local" | "remote" | "realtime" }) => void,
+) => {
   let stopped = false;
   let messages: Message[] = readLocalMessages(convId);
   let stopPolling: (() => void) | null = null;
   let stopRealtime: (() => void) | null = null;
 
-  const applyMessages = (next: Message[]) => {
+  const applyMessages = (next: Message[], source: "remote" | "realtime") => {
     const merged = mergeMessages(messages, next);
     if (!equalMessages(messages, merged)) {
       messages = merged;
       writeLocalMessages(convId, messages);
-      if (!stopped) cb(messages);
+      if (!stopped) cb(messages, { source });
     }
   };
 
   const load = async () => {
     const list = await fetchChatMessages(convId);
-    applyMessages(list);
+    applyMessages(list, "remote");
   };
 
   const fallback = () => {
@@ -556,7 +559,7 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
     const onMessage = (message: AblyMessage) => {
       const payload = normalizeMessage(message.data);
       if (!payload || payload.convId !== convId) return;
-      applyMessages([payload]);
+      applyMessages([payload], "realtime");
     };
 
     channel.subscribe("chat-message", onMessage);
@@ -573,8 +576,9 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
 
   void (async () => {
     try {
-      if (messages.length > 0 && !stopped) cb(messages);
+      if (messages.length > 0 && !stopped) cb(messages, { source: "local" });
       await load();
+      if (!stopped) cb(messages, { source: "remote" });
       const canUseRealtime = await startRealtime();
       if (!canUseRealtime) fallback();
     } catch (error) {

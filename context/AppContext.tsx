@@ -148,6 +148,7 @@ interface AppState {
   sendChatMessage: (conversationId: string, content: string) => void;
   subscribeConversationMessages: (conversationId: string) => () => void;
   getConversationMessages: (conversationId: string) => ChatMessage[];
+  isConversationHistoryLoaded: (conversationId: string) => boolean;
   markConversationRead: (conversationId: string) => void;
   undoApplicantDecision: (matchId: string, applicantUid: string) => void;
   addStudentNeed: (
@@ -204,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [applications, setApplications] = useState<MatchApplication[]>([]);
   const [convMeta, setConvMeta] = useState<Record<string, SchemaConversation & Partial<Conversation>>>({});
   const [convMessages, setConvMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [convHistoryLoaded, setConvHistoryLoaded] = useState<Record<string, boolean>>({});
   const messageUnsubs = useRef<Record<string, () => void>>({});
   const markReadLastAt = useRef<Record<string, number>>({});
   const [accountDisabledMessage, setAccountDisabledMessage] = useState<string | null>(null);
@@ -596,7 +598,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       };
 
-      const unsub = subscribeToMessages(conversationId, (msgs) => {
+      setConvHistoryLoaded((prev) => ({ ...prev, [conversationId]: false }));
+      const unsub = subscribeToMessages(conversationId, (msgs, state) => {
         const nextMessages = msgs.map((m) => toChatMessage(m));
         setConvMessages((prev) => {
           const current = prev[conversationId];
@@ -606,6 +609,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             [conversationId]: nextMessages,
           };
         });
+        if (state?.source === "remote") {
+          setConvHistoryLoaded((prev) => ({ ...prev, [conversationId]: true }));
+        }
       });
       messageUnsubs.current[conversationId] = unsub;
       return () => {
@@ -619,6 +625,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getConversationMessages = useCallback(
     (conversationId: string) => convMessages[conversationId] ?? [],
     [convMessages],
+  );
+
+  const isConversationHistoryLoaded = useCallback(
+    (conversationId: string) => convHistoryLoaded[conversationId] === true,
+    [convHistoryLoaded],
   );
 
   const sendChatMessage = useCallback(
@@ -1305,6 +1316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sendChatMessage,
     subscribeConversationMessages,
     getConversationMessages,
+    isConversationHistoryLoaded,
     markConversationRead,
     undoApplicantDecision,
     addStudentNeed,

@@ -47,10 +47,12 @@ function MessagesPageContent() {
     respondToApplicant,
     subscribeConversationMessages,
     getConversationMessages,
+    isConversationHistoryLoaded,
     markConversationRead,
     undoApplicantDecision,
   } = useApp();
   const selectedId = searchParams.get("conversation")?.trim() ?? "";
+  const selectedMatchId = selectedId.startsWith("match_") ? selectedId.replace(/^match_/, "") : "";
   const [draft, setDraft] = useState("");
   const [chatServiceUnavailable, setChatServiceUnavailable] = useState(false);
   const [undoTarget, setUndoTarget] = useState<{
@@ -90,7 +92,7 @@ function MessagesPageContent() {
     if (!selectedId) return undefined;
 
     if (selectedId.startsWith("match_")) {
-      const matchId = selectedId.replace(/^match_/, "");
+      const matchId = selectedMatchId;
       const match = matches.find((item) => item.id === matchId);
       if (match) {
         const participants = Array.isArray(match.applicants)
@@ -130,26 +132,34 @@ function MessagesPageContent() {
       ownerUid: safeText(existing.ownerUid) || undefined,
       messages: safeConversationMessages,
     };
-  }, [selectedId, conversations, matches, safeConversationMessages]);
+  }, [selectedId, selectedMatchId, conversations, matches, safeConversationMessages]);
 
   const selectedMatch = matches.find(
     (match) =>
+      match.id === selectedMatchId ||
       match.id === selectedConversation?.relatedId ||
       (typeof selectedConversation?.id === "string" && selectedConversation.id === `match_${match.id}`),
   );
+  const isMatchConversation = selectedId.startsWith("match_");
+  const isMatchDataLoading = Boolean(selectedId && isMatchConversation && !selectedMatch);
+  const isHistoryLoaded = selectedId ? isConversationHistoryLoaded(selectedId) : false;
   const selectedMatchApplicants = Array.isArray(selectedMatch?.applicants) ? selectedMatch.applicants : [];
   const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
   const isListedParticipant = selectedConversation?.participants.includes(user?.uid ?? "") === true;
   const isChatClosed = selectedConversation?.type === "match" && selectedMatch?.status === "closed";
   const canReadSelectedConversation = (() => {
-    if (!selectedConversation || isChatClosed) return false;
+    if (!selectedConversation || isChatClosed || isMatchDataLoading) return false;
     if (selectedConversation.type !== "match") return true;
     return isMatchHost || isListedParticipant || selectedApplicant?.status === "accepted";
   })();
   const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
   const chatServiceMessage = getChatServiceUnavailableMessage();
   const isChatDisabled = chatServiceUnavailable || Boolean(chatServiceMessage);
+  const isConversationLoading = Boolean(
+    selectedId &&
+      (isMatchDataLoading || (canReadSelectedConversation && !isHistoryLoaded && safeConversationMessages.length === 0)),
+  );
 
   useEffect(() => {
     const refresh = () => setChatServiceUnavailable(isChatServiceUnavailable());
@@ -319,21 +329,26 @@ function MessagesPageContent() {
               </header>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
-                {sendDisabledReason ? (
+                {isConversationLoading ? (
+                  <div className="rounded-2xl border border-parchment bg-white px-4 py-3 text-sm font-bold leading-6 text-muted">
+                    載入聊天室中...
+                  </div>
+                ) : null}
+                {!isConversationLoading && sendDisabledReason ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">
                     {sendDisabledReason}
                   </div>
                 ) : null}
-                {isChatDisabled ? (
+                {!isConversationLoading && isChatDisabled ? (
                   <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold leading-6 text-red-900">
                     {chatServiceMessage}
                   </div>
                 ) : null}
-                {!canReadSelectedConversation ? (
+                {!isConversationLoading && !canReadSelectedConversation ? (
                   <div className="rounded-2xl border border-parchment bg-white px-4 py-3 text-sm font-bold leading-6 text-muted">
                     {isChatClosed ? "聊天室已關閉，歷史訊息不可查看。" : "主揪同意加入後才能查看聊天內容。"}
                   </div>
-                ) : selectedConversation.messages.length > 0 ? (
+                ) : !isConversationLoading && selectedConversation.messages.length > 0 ? (
                   selectedConversation.messages.map((message) => {
                     const isMine = message.senderUid === user.uid;
                     const isSystem = message.type === "system";
@@ -382,11 +397,11 @@ function MessagesPageContent() {
                       </div>
                     );
                   })
-                ) : (
+                ) : !isConversationLoading ? (
                   <div className="flex h-full items-center justify-center text-center text-sm text-muted">
                     尚無訊息
                   </div>
-                )}
+                ) : null}
               </div>
 
               <form
