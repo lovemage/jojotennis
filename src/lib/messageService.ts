@@ -6,8 +6,7 @@ const MESSAGE_POLL_MS = 8000;
 const MESSAGE_HIDDEN_POLL_MS = 60000;
 const MESSAGE_FETCH_LIMIT = 30;
 const MESSAGE_RATE_LIMIT_BACKOFF_MS = 120000;
-const CHAT_QUOTA_DISABLED_MINUTES = 30;
-const CHAT_QUOTA_DISABLED_MS = CHAT_QUOTA_DISABLED_MINUTES * 60 * 1000;
+const CHAT_SERVICE_ERROR_PAUSE_MS = 30 * 1000;
 const CONVERSATION_POLL_MS = 120000;
 const ADMIN_CONVERSATION_POLL_MS = 120000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
@@ -43,10 +42,8 @@ function isChatServicePaused() {
 }
 
 function disableChatService(message: string) {
-  chatServiceUnavailableMessage = message.includes("max requests limit exceeded")
-    ? "聊天室免費額度已用盡，聊天室目前已暫時停用，請稍後再試。"
-    : message || "聊天室服務已暫時停用，請稍後再試。";
-  chatServiceUnavailableUntil = Date.now() + CHAT_QUOTA_DISABLED_MS;
+  chatServiceUnavailableMessage = message || "聊天室服務暫時忙碌，請稍後再試。";
+  chatServiceUnavailableUntil = Date.now() + CHAT_SERVICE_ERROR_PAUSE_MS;
 }
 
 function recoverChatService() {

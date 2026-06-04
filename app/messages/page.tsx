@@ -142,6 +142,7 @@ function MessagesPageContent() {
   const selectedMatchApplicants = Array.isArray(selectedMatch?.applicants) ? selectedMatch.applicants : [];
   const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
+  const isListedParticipant = selectedConversation?.participants.includes(user?.uid ?? "") === true;
   const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
   const chatServiceMessage = getChatServiceUnavailableMessage();
   const isChatDisabled = chatServiceUnavailable || Boolean(chatServiceMessage);
@@ -153,24 +154,18 @@ function MessagesPageContent() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const shouldAllowUnknownMatchSend =
-    !selectedConversation ||
-    selectedConversation.type !== "match" ||
-    selectedConversation.participants.length === 0 ||
-    selectedConversation.participants.includes(user?.uid ?? "");
   const canSendSelectedConversation = (() => {
     if (!selectedConversation || isChatDisabled) return false;
     if (selectedConversation.type !== "match") return true;
-    return selectedMatch ? isMatchHost || selectedApplicant?.status === "accepted" : shouldAllowUnknownMatchSend;
+    if (isMatchHost || isListedParticipant || selectedApplicant?.status === "accepted") return true;
+    return !selectedMatch;
   })();
   const sendDisabledReason =
-    selectedConversation?.type === "match" && !canSendSelectedConversation
+    !isChatDisabled && selectedConversation?.type === "match" && !canSendSelectedConversation
         ? selectedApplicant?.status === "pending"
         ? "主揪核准前，你可以查看聊天室，但暫時無法發送訊息。"
         : "加入球局後才能在此聊天室發送訊息。"
-      : isChatDisabled
-        ? chatServiceMessage
-        : "";
+      : "";
   const conversationReadyNotice = selectedConversation?.type === "match" && !selectedMatch ? "球局資料同步中，部分權限判斷以系統結果為準..." : "";
 
   const handleBack = () => {
