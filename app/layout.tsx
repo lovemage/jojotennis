@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { AppProvider } from "@/context/AppContext";
 import AnnouncementMarquee from "@/components/AnnouncementMarquee";
 import HeaderStatus from "@/components/HeaderStatus";
+import ChunkFailureRecovery from "@/components/ChunkFailureRecovery";
 import InstallPrompt from "@/components/InstallPrompt";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
@@ -62,6 +63,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-ivory text-ink antialiased`}
       >
+        <ChunkFailureRecovery />
         <AppProvider>
           <AnnouncementMarquee />
           <HeaderStatus />

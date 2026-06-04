@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { ChatMessage, Conversation } from "@/context/AppContext";
-import { sendMessage } from "@/lib/messageService";
+import {
+  getChatServiceUnavailableMessage,
+  isChatServiceUnavailable,
+  sendMessage,
+} from "@/lib/messageService";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
 function formatTime(value?: number) {
@@ -51,6 +55,7 @@ function MessagesPageContent() {
   } = useApp();
   const selectedId = searchParams.get("conversation")?.trim() ?? "";
   const [draft, setDraft] = useState("");
+  const [chatServiceUnavailable, setChatServiceUnavailable] = useState(false);
   const [undoTarget, setUndoTarget] = useState<{
     matchId: string;
     applicantUid: string;
@@ -138,12 +143,23 @@ function MessagesPageContent() {
   const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
   const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
+  const chatServiceMessage = getChatServiceUnavailableMessage();
+  const isChatDisabled = chatServiceUnavailable || Boolean(chatServiceMessage);
+
+  useEffect(() => {
+    const refresh = () => setChatServiceUnavailable(isChatServiceUnavailable());
+    refresh();
+    const timer = window.setInterval(refresh, 10000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const shouldAllowUnknownMatchSend =
     !selectedConversation ||
     selectedConversation.type !== "match" ||
     selectedConversation.participants.length === 0 ||
     selectedConversation.participants.includes(user?.uid ?? "");
   const canSendSelectedConversation =
+    !isChatDisabled &&
     !selectedConversation
       ? false
       : selectedConversation.type !== "match"
@@ -153,9 +169,12 @@ function MessagesPageContent() {
           : shouldAllowUnknownMatchSend;
   const sendDisabledReason =
     selectedConversation?.type === "match" && !canSendSelectedConversation
-      ? selectedApplicant?.status === "pending"
+        ? selectedApplicant?.status === "pending"
         ? "主揪核准前，你可以查看聊天室，但暫時無法發送訊息。"
         : "加入球局後才能在此聊天室發送訊息。"
+      : isChatDisabled
+        ? chatServiceMessage
+        : "";
       : "";
   const conversationReadyNotice = selectedConversation?.type === "match" && !selectedMatch ? "球局資料同步中，部分權限判斷以系統結果為準..." : "";
 
@@ -316,6 +335,11 @@ function MessagesPageContent() {
                 {sendDisabledReason ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">
                     {sendDisabledReason}
+                  </div>
+                ) : null}
+                {isChatDisabled ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold leading-6 text-red-900">
+                    {chatServiceMessage}
                   </div>
                 ) : null}
                 {selectedConversation.messages.length > 0 ? (
