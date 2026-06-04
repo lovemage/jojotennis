@@ -124,7 +124,7 @@ export default function MatchBoard() {
   const [joinPrompt, setJoinPrompt] = useState<Match | null>(null);
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [joinError, setJoinError] = useState("");
-  const [joinBusy, setJoinBusy] = useState(false);
+  const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
   const [chatSettingsMatch, setChatSettingsMatch] = useState<Match | null>(null);
@@ -281,7 +281,7 @@ export default function MatchBoard() {
   }
 
   async function joinMatch(match: Match, joinCode?: string) {
-    if (joinBusy) {
+    if (joiningMatchId) {
       return;
     }
 
@@ -298,13 +298,13 @@ export default function MatchBoard() {
       return;
     }
 
-    setJoinBusy(true);
+    setJoiningMatchId(match.id);
     setJoinError("");
     const result = await applyMatch(match.id, joinCode).catch((error) => ({
       ok: false,
       msg: error instanceof Error ? error.message : "加入球局失敗，請稍後再試",
     }));
-    setJoinBusy(false);
+    setJoiningMatchId(null);
 
     if (!result.ok) {
       setJoinError(result.msg);
@@ -487,6 +487,7 @@ export default function MatchBoard() {
           const isPendingApproval = myApplication?.status === "pending";
           const isAccepted = myApplication?.status === "accepted";
           const actionColumns = isOwner ? "grid-cols-2" : "grid-cols-1";
+          const isJoiningThisMatch = joiningMatchId === match.id;
           return (
             <article
               key={match.id}
@@ -583,16 +584,16 @@ export default function MatchBoard() {
                   {!hasApplied && !isOwner && !isAccepted ? (
                     <button
                       type="button"
-                      disabled={joinBusy || isFull}
+                      disabled={isJoiningThisMatch || isFull}
                       onClick={(event) => {
                         event.stopPropagation();
                         void joinMatch(match);
                       }}
                       className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
-                        joinBusy || isFull ? "bg-muted" : "bg-clay"
+                        isJoiningThisMatch || isFull ? "bg-muted" : "bg-clay"
                       }`}
                     >
-                      {joinBusy ? "處理中" : isFull ? "招募已滿" : "我要加入"}
+                      {isJoiningThisMatch ? "申請中" : isFull ? "招募已滿" : "我要加入"}
                     </button>
                   ) : null}
                 </div>
@@ -918,11 +919,11 @@ export default function MatchBoard() {
               </button>
               <button
                 type="button"
-                disabled={joinBusy || joinCodeInput.length !== 6}
+                disabled={joiningMatchId === joinPrompt.id || joinCodeInput.length !== 6}
                 onClick={() => void joinMatch(joinPrompt, joinCodeInput)}
                 className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
               >
-                確認加入
+                {joiningMatchId === joinPrompt.id ? "申請中" : "確認加入"}
               </button>
             </div>
           </div>
