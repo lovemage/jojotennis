@@ -20,7 +20,8 @@ export type RedisConversation = {
   ownerUid?: string;
 };
 
-const DEFAULT_TTL_DAYS = 7;
+const DEFAULT_CHAT_TTL_DAYS = 7;
+const MAX_CHAT_TTL_DAYS = 7;
 const MAX_MESSAGES_PER_CONVERSATION = 500;
 const MAX_CONVERSATION_KEYS = 200;
 const CONVERSATION_FETCH_CHUNK = 100;
@@ -55,8 +56,9 @@ function allConversationsKey() {
 }
 
 function ttlSeconds() {
-  const configuredDays = Number(process.env.CHAT_MESSAGE_TTL_DAYS ?? DEFAULT_TTL_DAYS);
-  const days = Number.isFinite(configuredDays) && configuredDays > 0 ? configuredDays : DEFAULT_TTL_DAYS;
+  const configuredDays = Number(process.env.CHAT_MESSAGE_TTL_DAYS ?? DEFAULT_CHAT_TTL_DAYS);
+  const parsedDays = Number.isFinite(configuredDays) ? Math.floor(configuredDays) : DEFAULT_CHAT_TTL_DAYS;
+  const days = Math.max(1, Math.min(parsedDays, MAX_CHAT_TTL_DAYS));
   return Math.floor(days * 24 * 60 * 60);
 }
 
@@ -124,6 +126,7 @@ async function listRedisConversationsByIds(ids: string[]): Promise<RedisConversa
 
 async function writeConversation(redis: Redis, conversation: RedisConversation) {
   await redis.set(conversationKey(conversation.convId), JSON.stringify(conversation));
+  await redis.expire(conversationKey(conversation.convId), ttlSeconds());
   await redis.sadd(allConversationsKey(), conversation.convId);
   if (conversation.participants.length > 0) {
     await Promise.all(
