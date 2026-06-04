@@ -158,15 +158,11 @@ function MessagesPageContent() {
     selectedConversation.type !== "match" ||
     selectedConversation.participants.length === 0 ||
     selectedConversation.participants.includes(user?.uid ?? "");
-  const canSendSelectedConversation =
-    !isChatDisabled &&
-    !selectedConversation
-      ? false
-      : selectedConversation.type !== "match"
-        ? true
-        : selectedMatch
-          ? isMatchHost || selectedApplicant?.status === "accepted"
-          : shouldAllowUnknownMatchSend;
+  const canSendSelectedConversation = (() => {
+    if (!selectedConversation || isChatDisabled) return false;
+    if (selectedConversation.type !== "match") return true;
+    return selectedMatch ? isMatchHost || selectedApplicant?.status === "accepted" : shouldAllowUnknownMatchSend;
+  })();
   const sendDisabledReason =
     selectedConversation?.type === "match" && !canSendSelectedConversation
         ? selectedApplicant?.status === "pending"

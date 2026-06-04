@@ -132,7 +132,7 @@ function normalizeMessage(raw: unknown): Message | null {
     content,
     msgType: message.msgType === "system" ? "system" : "text",
     readBy: Array.isArray(message.readBy) ? message.readBy.filter((item): item is string => typeof item === "string") : [],
-    createdAt: toNumber(message.createdAt),
+    createdAt: new Date(toNumber(message.createdAt)),
   };
 }
 
@@ -144,7 +144,7 @@ function mergeMessages(existing: Message[], next: Message[]): Message[] {
   for (const item of next) {
     map.set(item.msgId, item);
   }
-  return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
+  return Array.from(map.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 function equalMessages(left: Message[], right: Message[]) {
@@ -159,7 +159,7 @@ function equalMessages(left: Message[], right: Message[]) {
       item.senderNickname === next.senderNickname &&
       item.content === next.content &&
       item.msgType === next.msgType &&
-      item.createdAt === next.createdAt &&
+      item.createdAt.getTime() === next.createdAt.getTime() &&
       item.readBy.length === next.readBy.length &&
       item.readBy.every((uid, i) => uid === next.readBy[i])
     );
@@ -192,7 +192,7 @@ function getAblyClient() {
           }
           callback(null, JSON.parse(text));
         } catch (error) {
-          callback(error instanceof Error ? error : new Error(String(error ?? "Ably 認證失敗")), undefined as any);
+          callback(error as any, undefined as any);
         }
       },
       autoConnect: true,
