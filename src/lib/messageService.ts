@@ -545,6 +545,14 @@ export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) =>
 {
   let stopped = false;
 
+  if (CHAT_REALTIME_PROVIDER === "ably") {
+    cb([]);
+    void uid;
+    return () => {
+      stopped = true;
+    };
+  }
+
   void (async () => {
     try {
       const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations");

@@ -14,6 +14,10 @@ import {
 
 export const runtime = "nodejs";
 
+function isAblyChatMode() {
+  return (process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably") === "ably";
+}
+
 async function verifyFirebaseTokenWithRest(token: string) {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) throw new Error("Missing NEXT_PUBLIC_FIREBASE_API_KEY");
@@ -63,6 +67,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (isAblyChatMode() && !admin) {
+    return NextResponse.json({ conversations: [] });
+  }
+
   try {
     const conversations = admin
       ? await listAllRedisConversations()
@@ -97,6 +105,27 @@ export async function POST(request: Request) {
 
   const convId = body.convId?.trim();
   if (!convId) return NextResponse.json({ error: "Missing convId" }, { status: 400 });
+
+  if (isAblyChatMode()) {
+    if (body.action === "upsert" || !body.action) {
+      return NextResponse.json({
+        conversation: {
+          convId,
+          type: body.type ?? "match",
+          participants: Array.from(new Set([...(body.participants ?? []), auth.uid].filter(Boolean))),
+          relatedId: body.relatedId,
+          name: body.name ?? "聊天室",
+          lastMessage: "",
+          lastSenderNickname: "",
+          updatedAt: Date.now(),
+          unreadCount: 0,
+          status: body.status,
+          ownerUid: body.ownerUid,
+        },
+      });
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   if (body.action === "addParticipant") {
     if (!body.uid) return NextResponse.json({ error: "Missing uid" }, { status: 400 });
@@ -141,6 +170,8 @@ export async function DELETE(request: Request) {
   const url = new URL(request.url);
   const convId = url.searchParams.get("conversationId")?.trim();
   if (!convId) return NextResponse.json({ error: "Missing conversationId" }, { status: 400 });
+
+  if (isAblyChatMode()) return NextResponse.json({ ok: true });
 
   await deleteRedisConversation(convId);
   return NextResponse.json({ ok: true });

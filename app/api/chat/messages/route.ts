@@ -81,9 +81,6 @@ async function canSendMatchConversation(matchId: string, uid: string) {
 }
 
 async function resolveConversation(convId: string) {
-  const redisConversation = await getRedisConversation(convId);
-  if (redisConversation) return redisConversation as ConversationDoc;
-
   if (convId.startsWith("match_")) {
     return {
       type: "match" as const,
@@ -91,6 +88,10 @@ async function resolveConversation(convId: string) {
       participants: [],
     };
   }
+
+  const redisConversation = await getRedisConversation(convId);
+  if (redisConversation) return redisConversation as ConversationDoc;
+
   return null;
 }
 
@@ -127,8 +128,8 @@ export async function GET(request: Request) {
     const messages = await listRedisChatMessages(convId, limit);
     return NextResponse.json({ messages });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Redis unavailable";
-    return NextResponse.json({ error: message }, { status: 503 });
+    console.warn("[chat/messages] cache unavailable:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ messages: [] });
   }
 }
 
@@ -160,16 +161,19 @@ export async function POST(request: Request) {
   }
 
   const isSystem = body.type === "system" || body.senderUid === "system";
+  const message = {
+    msgId: `msg-${Date.now()}-${crypto.randomUUID()}`,
+    convId,
+    senderUid: isSystem ? "system" : auth.uid,
+    senderNickname: isSystem ? body.senderNickname || "揪揪網球" : body.senderNickname || "球友",
+    content,
+    msgType: (isSystem ? "system" : "text") as "system" | "text",
+    readBy: isSystem ? [] : [auth.uid],
+    createdAt: Date.now(),
+  };
+
   try {
-    const message = await appendRedisChatMessage(convId, {
-      msgId: `msg-${Date.now()}-${crypto.randomUUID()}`,
-      senderUid: isSystem ? "system" : auth.uid,
-      senderNickname: isSystem ? body.senderNickname || "揪揪網球" : body.senderNickname || "球友",
-      content,
-      msgType: isSystem ? "system" : "text",
-      readBy: isSystem ? [] : [auth.uid],
-      createdAt: Date.now(),
-    });
+    await appendRedisChatMessage(convId, message);
     await updateRedisConversationAfterMessage(
       convId,
       isSystem ? "system" : auth.uid,
@@ -177,9 +181,9 @@ export async function POST(request: Request) {
       content,
     );
 
-    return NextResponse.json({ message });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Redis unavailable";
-    return NextResponse.json({ error: message }, { status: 503 });
+    console.warn("[chat/messages] cache write skipped:", error instanceof Error ? error.message : error);
   }
+
+  return NextResponse.json({ message });
 }

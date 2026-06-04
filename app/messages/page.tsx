@@ -31,10 +31,6 @@ function conversationTitle(conversation: Pick<Conversation, "id" | "name" | "typ
   return name || (conversation.type === "match" ? "揪球聊天室" : "未命名對話");
 }
 
-function shortUid(uid?: string) {
-  return uid ? uid.slice(0, 6) : "未知";
-}
-
 function reportApproveError(error: unknown) {
   const message = error instanceof Error ? error.message : "操作失敗";
   alert(message.includes("Quota exceeded") ? "後端服務配額已用完，暫時無法更新核准狀態。" : message);
@@ -281,7 +277,6 @@ function MessagesPageContent() {
                             >
                               <span>{applicant.nickname}</span>
                               <span>· {applicant.status === "pending" ? "待核准" : "已加入"}</span>
-                              <span>· UID: {shortUid(applicant.uid)}</span>
                               {applicant.uid ? <UserStatsBadge uid={applicant.uid} /> : null}
                             </span>
                           ))}
