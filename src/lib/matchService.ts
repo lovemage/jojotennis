@@ -1,108 +1,42 @@
-import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  doc,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  getDoc,
-  getDocs,
-  serverTimestamp,
-  increment,
-  runTransaction,
-} from "firebase/firestore";
-import { softDeleteMatchCascade } from "./softDelete";
-import {
-  sendSystemMessage,
-  createMatchConversation,
-  addUserToConversation,
-  removeUserFromConversation,
-  getOrCreateDirectConversation,
-} from "./messageService";
-import { isTimeRangeValid, weekdayLabel } from "./timeUtils";
+import { auth } from "./firebase";
+import { isTimeRangeValid } from "./timeUtils";
 import type { Match, MatchApplication, MatchJoinMode } from "./schema";
 
-const BASE = {
-  isDeleted: false,
-  deletedAt: null,
-  updatedAt: serverTimestamp(),
+type MatchListPayload = {
+  matches: Array<Match & { matchId: string }>;
+  applications: MatchApplication[];
 };
 
-function generateJoinCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+async function authHeaders() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("需要登入");
+  return { Authorization: `Bearer ${token}` };
 }
 
-function resolveJoinMode(match: Match): MatchJoinMode {
-  return match.joinMode ?? "approval";
-}
-
-async function directJoinMatch(
-  matchId: string,
-  applicantUid: string,
-  applicantNickname: string,
-): Promise<{ ok: boolean; msg: string }> {
-  const mSnap = await getDoc(doc(db, "matches", matchId));
-  if (!mSnap.exists()) return { ok: false, msg: "球局不存在" };
-  const m = mSnap.data() as Match;
-  if (m.isDeleted || m.status === "cancelled") return { ok: false, msg: "球局已取消" };
-  if (m.status === "closed" || m.filledSlots >= m.totalSlots) return { ok: false, msg: "球局已額滿" };
-  if (m.ownerUid === applicantUid) return { ok: false, msg: "主揪不需要申請" };
-
-  const dup = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", applicantUid),
-      where("isDeleted", "==", false),
-    ),
-  );
-  const existing = dup.docs[0];
-  const existingData = existing?.data() as MatchApplication | undefined;
-  if (existingData?.status === "accepted") return { ok: false, msg: "你已加入此球局" };
-  if (existingData?.status === "pending") return { ok: false, msg: "已申請過此球局" };
-
-  const matchTitle = m.title;
-  await runTransaction(db, async (tx) => {
-    const mRef = doc(db, "matches", matchId);
-    const latest = await tx.get(mRef);
-    const latestMatch = latest.data() as Match;
-    if (latestMatch.filledSlots >= latestMatch.totalSlots) throw new Error("球局已額滿");
-    const newFilled = latestMatch.filledSlots + 1;
-    tx.update(mRef, {
-      filledSlots: increment(1),
-      status: newFilled >= latestMatch.totalSlots ? "closed" : "open",
-      updatedAt: serverTimestamp(),
-    });
+async function matchApi<T>(init?: RequestInit): Promise<T> {
+  const headers = init?.method && init.method !== "GET" ? await authHeaders() : {};
+  const response = await fetch("/api/matches", {
+    ...init,
+    headers: {
+      ...headers,
+      ...(init?.headers ?? {}),
+    },
   });
+  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error || "球局 API 失敗");
+  return payload;
+}
 
-  if (existing) {
-    await updateDoc(existing.ref, {
-      status: "accepted",
-      applicantNickname,
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    await addDoc(collection(db, "match_applications"), {
-      matchId,
-      applicantUid,
-      applicantNickname,
-      status: "accepted",
-      ...BASE,
-      createdAt: serverTimestamp(),
-    });
-  }
+async function patchMatch<T>(body: Record<string, unknown>): Promise<T> {
+  return matchApi<T>({
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
-  await addUserToConversation(`match_${matchId}`, applicantUid);
-  await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 已加入球局！`);
-  const mSnap2 = await getDoc(doc(db, "matches", matchId));
-  if ((mSnap2.data() as Match).status === "closed") {
-    await sendSystemMessage(`match_${matchId}`, `「${matchTitle}」招募完成！祝大家打球愉快 🎾`);
-  }
-
-  return { ok: true, msg: "已成功加入球局" };
+export async function fetchMatches(): Promise<MatchListPayload> {
+  return matchApi<MatchListPayload>();
 }
 
 export async function createMatch(data: {
@@ -120,28 +54,18 @@ export async function createMatch(data: {
   note: string;
   joinMode?: MatchJoinMode;
 }): Promise<string> {
-  if (!isTimeRangeValid(data.startTime, data.endTime))
+  if (!isTimeRangeValid(data.startTime, data.endTime)) {
     throw new Error("結束時間必須晚於開始時間");
-  if (data.totalSlots < 1 || data.totalSlots > 8) throw new Error("人數需在 1–8 人之間");
+  }
+  if (data.totalSlots < 1 || data.totalSlots > 8) throw new Error("人數需在 1-8 人之間");
   if (!data.title.trim()) throw new Error("標題不可為空");
 
-  const joinMode = data.joinMode ?? "public";
-  const joinCode = joinMode === "private" ? generateJoinCode() : null;
-
-  const ref = await addDoc(collection(db, "matches"), {
-    ...data,
-    joinMode,
-    ...(joinCode ? { joinCode } : {}),
-    ...BASE,
-    weekday: weekdayLabel(data.date),
-    filledSlots: 0,
-    status: "open",
-    createdAt: serverTimestamp(),
+  const result = await matchApi<{ id: string }>({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
-  void createMatchConversation(ref.id, data.title, data.ownerUid).catch((error) => {
-    console.warn("[match] conversation metadata unavailable:", error);
-  });
-  return ref.id;
+  return result.id;
 }
 
 export async function updateMatchSettings(
@@ -159,104 +83,61 @@ export async function updateMatchSettings(
     joinMode: MatchJoinMode;
   },
 ): Promise<{ ok: boolean; msg: string }> {
-  if (!isTimeRangeValid(data.startTime, data.endTime)) {
-    return { ok: false, msg: "結束時間必須晚於開始時間" };
-  }
-  if (data.totalSlots < 1 || data.totalSlots > 8) {
-    return { ok: false, msg: "人數需在 1–8 人之間" };
-  }
-
-  const matchRef = doc(db, "matches", matchId);
-  const snap = await getDoc(matchRef);
-  if (!snap.exists()) return { ok: false, msg: "球局不存在" };
-
-  const match = snap.data() as Match;
-  if (match.ownerUid !== ownerUid) return { ok: false, msg: "只有主揪可以更新球局設定" };
-  if (data.totalSlots < match.filledSlots) {
-    return { ok: false, msg: `人數不可小於已核准人數 ${match.filledSlots}` };
-  }
-
-  const nextJoinCode =
-    data.joinMode === "private" && !match.joinCode ? generateJoinCode() : undefined;
-
-  await updateDoc(matchRef, {
-    city: data.city,
-    district: data.district,
-    venue: data.venue,
-    date: data.date,
-    weekday: weekdayLabel(data.date),
-    startTime: data.startTime,
-    endTime: data.endTime,
-    ntrpRequired: data.ntrpRequired,
-    totalSlots: data.totalSlots,
-    joinMode: data.joinMode,
-    ...(nextJoinCode ? { joinCode: nextJoinCode } : {}),
-    updatedAt: serverTimestamp(),
-  });
-
-  return { ok: true, msg: "球局設定已更新" };
+  void ownerUid;
+  return patchMatch({ action: "settings", matchId, settings: data });
 }
 
 export function subscribeToMatches(cb: (m: Match[]) => void, cityFilter?: string) {
-  return onSnapshot(
-    collection(db, "matches"),
-    (snap) => {
-      let results = snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as Match);
-      results = results.filter(
-        (m) =>
-          m.isDeleted !== true &&
-          m.status === "open" &&
-          (!cityFilter || m.city === cityFilter),
-      );
-      results.sort((a, b) => {
-        const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-        const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-        return tb - ta;
-      });
-      console.log("揪球資料更新，筆數：", results.length);
-      cb(results);
-    },
-    (err) => console.error("matches 監聽失敗：", err),
-  );
+  let stopped = false;
+  async function load() {
+    try {
+      const payload = await fetchMatches();
+      if (stopped) return;
+      const rows = payload.matches
+        .filter((match) => match.isDeleted !== true && match.status === "open")
+        .filter((match) => !cityFilter || match.city === cityFilter);
+      cb(rows);
+    } catch (error) {
+      console.error("matches 讀取失敗：", error);
+      if (!stopped) cb([]);
+    }
+  }
+  void load();
+  const timer = window.setInterval(() => void load(), 5000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+  };
 }
 
-/** 後台用：含已取消/已刪除的揪球 */
 export function subscribeToAllMatches(cb: (m: Match[]) => void) {
-  return onSnapshot(query(collection(db, "matches"), orderBy("createdAt", "desc")), (snap) =>
-    cb(snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as Match)),
-  );
+  return subscribeToMatches(cb);
 }
 
 export function subscribeToMyMatches(
   uid: string,
   cb: (owned: Match[], joined: MatchApplication[]) => void,
 ) {
-  const unsubOwned = onSnapshot(
-    query(
-      collection(db, "matches"),
-      where("ownerUid", "==", uid),
-      where("isDeleted", "==", false),
-      orderBy("createdAt", "desc"),
-    ),
-    (snap) => {
-      const owned = snap.docs.map((d) => ({ matchId: d.id, ...d.data() }) as Match);
-      const unsubJoined = onSnapshot(
-        query(
-          collection(db, "match_applications"),
-          where("applicantUid", "==", uid),
-          where("isDeleted", "==", false),
-          orderBy("createdAt", "desc"),
-        ),
-        (snap2) =>
-          cb(
-            owned,
-            snap2.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication),
-          ),
+  let stopped = false;
+  async function load() {
+    try {
+      const payload = await fetchMatches();
+      if (stopped) return;
+      cb(
+        payload.matches.filter((match) => match.ownerUid === uid),
+        payload.applications.filter((app) => app.applicantUid === uid),
       );
-      return unsubJoined;
-    },
-  );
-  return unsubOwned;
+    } catch (error) {
+      console.error("my matches 讀取失敗：", error);
+      if (!stopped) cb([], []);
+    }
+  }
+  void load();
+  const timer = window.setInterval(() => void load(), 5000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+  };
 }
 
 export async function applyToMatch(
@@ -264,43 +145,7 @@ export async function applyToMatch(
   applicantUid: string,
   applicantNickname: string,
 ): Promise<{ ok: boolean; msg: string }> {
-  const mSnap = await getDoc(doc(db, "matches", matchId));
-  if (!mSnap.exists()) return { ok: false, msg: "球局不存在" };
-  const m = mSnap.data() as Match;
-  if (m.isDeleted || m.status === "cancelled") return { ok: false, msg: "球局已取消" };
-  if (m.status === "closed") return { ok: false, msg: "球局已額滿" };
-  if (m.ownerUid === applicantUid) return { ok: false, msg: "主揪不需要申請" };
-
-  const joinMode = resolveJoinMode(m);
-  if (joinMode === "public") {
-    return directJoinMatch(matchId, applicantUid, applicantNickname);
-  }
-  if (joinMode === "private") {
-    return { ok: false, msg: "此球局需要加入碼" };
-  }
-
-  const dup = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", applicantUid),
-      where("isDeleted", "==", false),
-    ),
-  );
-  const existing = dup.docs[0]?.data();
-  if (existing && !["declined", "removed"].includes(existing.status))
-    return { ok: false, msg: "已申請過此球局" };
-
-  await addDoc(collection(db, "match_applications"), {
-    matchId,
-    applicantUid,
-    applicantNickname,
-    status: "pending",
-    ...BASE,
-    createdAt: serverTimestamp(),
-  });
-  await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 申請加入，等待主揪確認。`);
-  return { ok: true, msg: "申請已送出" };
+  return patchMatch({ action: "apply", matchId, applicantUid, applicantNickname });
 }
 
 export async function joinMatchWithCode(
@@ -309,12 +154,7 @@ export async function joinMatchWithCode(
   applicantUid: string,
   applicantNickname: string,
 ): Promise<{ ok: boolean; msg: string }> {
-  const mSnap = await getDoc(doc(db, "matches", matchId));
-  if (!mSnap.exists()) return { ok: false, msg: "球局不存在" };
-  const m = mSnap.data() as Match;
-  if (resolveJoinMode(m) !== "private") return { ok: false, msg: "此球局不需要加入碼" };
-  if (!m.joinCode || m.joinCode !== joinCode.trim()) return { ok: false, msg: "加入碼錯誤" };
-  return directJoinMatch(matchId, applicantUid, applicantNickname);
+  return patchMatch({ action: "apply", matchId, joinCode, applicantUid, applicantNickname });
 }
 
 export async function respondToApplication(
@@ -324,46 +164,9 @@ export async function respondToApplication(
   applicantUid: string,
   applicantNickname: string,
 ): Promise<void> {
-  const appRef = doc(db, "match_applications", appId);
-  const appSnap = await getDoc(appRef);
-  if (!appSnap.exists()) throw new Error("申請不存在");
-  if (appSnap.data().status !== "pending") throw new Error("此申請已處理");
-
-  let matchTitle = "";
-  await runTransaction(db, async (tx) => {
-    const mRef = doc(db, "matches", matchId);
-    const mSnap = await tx.get(mRef);
-    const m = mSnap.data() as Match;
-    matchTitle = m.title;
-    tx.update(appRef, { status: accept ? "accepted" : "declined", updatedAt: serverTimestamp() });
-    if (accept) {
-      const newFilled = m.filledSlots + 1;
-      tx.update(mRef, {
-        filledSlots: increment(1),
-        status: newFilled >= m.totalSlots ? "closed" : "open",
-        updatedAt: serverTimestamp(),
-      });
-    }
-  });
-
-  if (accept) {
-    await addUserToConversation(`match_${matchId}`, applicantUid);
-    await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 已加入球局！`);
-    const mSnap2 = await getDoc(doc(db, "matches", matchId));
-    if ((mSnap2.data() as Match).status === "closed")
-      await sendSystemMessage(
-        `match_${matchId}`,
-        `「${matchTitle}」招募完成！祝大家打球愉快 🎾`,
-      );
-  }
-
-  const directId = await getOrCreateDirectConversation(applicantUid, applicantNickname);
-  await sendSystemMessage(
-    directId,
-    accept
-      ? `你已被接受加入「${matchTitle}」！請查看球局聊天室確認集合資訊。`
-      : `你申請的「${matchTitle}」未被接受，繼續找其他球友吧！`,
-  );
+  void appId;
+  void applicantNickname;
+  await patchMatch({ action: "respond", matchId, accept, applicantUid });
 }
 
 export async function removeFromMatch(
@@ -372,26 +175,9 @@ export async function removeFromMatch(
   targetNickname: string,
   matchTitle: string,
 ): Promise<void> {
-  const snap = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", targetUid),
-      where("status", "==", "accepted"),
-    ),
-  );
-  if (snap.empty) throw new Error("找不到此球友的申請記錄");
-  await updateDoc(snap.docs[0].ref, { status: "removed", updatedAt: serverTimestamp() });
-  await updateDoc(doc(db, "matches", matchId), {
-    filledSlots: increment(-1),
-    status: "open",
-    updatedAt: serverTimestamp(),
-  });
-  const convId = await getOrCreateDirectConversation(targetUid, targetNickname);
-  await sendSystemMessage(
-    convId,
-    `您已被主辦人從「${matchTitle}」中移除，如有場地費問題請於此聊天室協調。⚠️ 請勿在平台外轉帳，謹防詐騙。`,
-  );
+  void targetNickname;
+  void matchTitle;
+  await patchMatch({ action: "remove", matchId, applicantUid: targetUid });
 }
 
 export async function transferMatchOwnership(
@@ -400,27 +186,13 @@ export async function transferMatchOwnership(
   newOwnerUid: string,
   newOwnerNickname: string,
 ): Promise<void> {
-  const mSnap = await getDoc(doc(db, "matches", matchId));
-  const m = mSnap.data() as Match;
-  if (m.ownerUid !== currentOwnerUid) throw new Error("只有主揪可轉移主辦權");
-
-  const check = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", newOwnerUid),
-      where("status", "==", "accepted"),
-      where("isDeleted", "==", false),
-    ),
-  );
-  if (check.empty) throw new Error("新主揪必須是已接受的球友");
-
-  await updateDoc(doc(db, "matches", matchId), {
-    ownerUid: newOwnerUid,
-    ownerNickname: newOwnerNickname,
-    updatedAt: serverTimestamp(),
+  void currentOwnerUid;
+  await patchMatch({
+    action: "transfer",
+    matchId,
+    applicantUid: newOwnerUid,
+    applicantNickname: newOwnerNickname,
   });
-  await sendSystemMessage(`match_${matchId}`, `系統紀錄：主辦權已移交給 ${newOwnerNickname}。`);
 }
 
 export async function leaveFromMatch(
@@ -429,26 +201,9 @@ export async function leaveFromMatch(
   applicantNickname: string,
   matchTitle: string,
 ): Promise<void> {
-  const snap = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", applicantUid),
-      where("status", "==", "accepted"),
-      where("isDeleted", "==", false),
-    ),
-  );
-  if (snap.empty) throw new Error("你尚未加入此球局");
-  await updateDoc(snap.docs[0].ref, { status: "removed", updatedAt: serverTimestamp() });
-  await updateDoc(doc(db, "matches", matchId), {
-    filledSlots: increment(-1),
-    status: "open",
-    updatedAt: serverTimestamp(),
-  });
-  await removeUserFromConversation(`match_${matchId}`, applicantUid);
-  const convId = await getOrCreateDirectConversation(applicantUid, applicantNickname);
-  await sendSystemMessage(convId, `你已退出「${matchTitle}」。`);
-  await sendSystemMessage(`match_${matchId}`, `${applicantNickname} 已退出球局。`);
+  void applicantNickname;
+  void matchTitle;
+  await patchMatch({ action: "leave", matchId, applicantUid });
 }
 
 export async function cancelMatch(
@@ -456,36 +211,13 @@ export async function cancelMatch(
   ownerUid: string,
   matchTitle: string,
 ): Promise<void> {
-  const mSnap = await getDoc(doc(db, "matches", matchId));
-  const m = mSnap.data() as Match;
-  if (m.ownerUid !== ownerUid) throw new Error("只有主揪可取消活動");
-  if (m.isDeleted) throw new Error("活動已取消");
-
-  await softDeleteMatchCascade(matchId);
-
-  const accepted = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("status", "==", "accepted"),
-    ),
-  );
-  for (const app of accepted.docs) {
-    const { applicantUid, applicantNickname } = app.data();
-    const cId = await getOrCreateDirectConversation(applicantUid, applicantNickname);
-    await sendSystemMessage(
-      cId,
-      `很遺憾，「${matchTitle}」已被主辦人取消。如有問題可在此聊天室聯繫。`,
-    );
-  }
-  await sendSystemMessage(`match_${matchId}`, `「${matchTitle}」已取消。感謝各位參與。`);
+  void ownerUid;
+  void matchTitle;
+  await patchMatch({ action: "cancel", matchId });
 }
 
 export async function closeMatch(matchId: string): Promise<void> {
-  await updateDoc(doc(db, "matches", matchId), {
-    status: "closed",
-    updatedAt: serverTimestamp(),
-  });
+  await patchMatch({ action: "close", matchId });
 }
 
 export async function undoApplicationToPending(
@@ -493,37 +225,33 @@ export async function undoApplicationToPending(
   applicantUid: string,
   filledSlots: number,
 ): Promise<void> {
-  const snap = await getDocs(
-    query(
-      collection(db, "match_applications"),
-      where("matchId", "==", matchId),
-      where("applicantUid", "==", applicantUid),
-    ),
-  );
-  if (!snap.empty) {
-    await updateDoc(snap.docs[0].ref, { status: "pending", updatedAt: serverTimestamp() });
-  }
-  await updateDoc(doc(db, "matches", matchId), {
-    filledSlots,
-    status: "open",
-    updatedAt: serverTimestamp(),
-  });
+  void filledSlots;
+  await patchMatch({ action: "undo", matchId, applicantUid });
 }
 
 export async function adminUpdateMatchStatus(
   matchId: string,
   status: Match["status"],
 ): Promise<void> {
-  await updateDoc(doc(db, "matches", matchId), {
-    status,
-    updatedAt: serverTimestamp(),
+  const headers = await authHeaders();
+  const response = await fetch("/api/admin/matches", {
+    method: "PATCH",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ matchId, status }),
   });
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(payload.error || "更新球局狀態失敗");
 }
 
 export async function adminSoftDeleteMatch(matchId: string): Promise<void> {
-  await updateDoc(doc(db, "matches", matchId), {
-    isDeleted: true,
-    deletedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const headers = await authHeaders();
+  const response = await fetch(`/api/admin/matches?matchId=${encodeURIComponent(matchId)}`, {
+    method: "DELETE",
+    headers,
   });
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(payload.error || "刪除球局失敗");
 }

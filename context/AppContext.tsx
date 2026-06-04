@@ -21,6 +21,7 @@ import {
 } from "@/lib/authService";
 import {
   createMatch as createMatchService,
+  fetchMatches as fetchMatchesService,
   applyToMatch,
   joinMatchWithCode,
   respondToApplication,
@@ -230,6 +231,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMatches(displayMatches);
   }, [displayMatches]);
+
+  const refreshMatches = useCallback(async () => {
+    try {
+      const payload = await fetchMatchesService();
+      setRawSchemaMatches(payload.matches);
+      setApplications(payload.applications);
+    } catch (error) {
+      console.error("[matches] Supabase 讀取失敗：", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMatches();
+    const timer = window.setInterval(() => void refreshMatches(), 5000);
+    return () => window.clearInterval(timer);
+  }, [refreshMatches]);
 
   const unreadCount = useMemo(
     () => displayConversations.reduce((sum, c) => sum + c.unreadCount, 0),
@@ -684,7 +701,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addMatch = useCallback(
     async (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => {
       if (USE_FIREBASE && user) {
-        return createMatchService({
+        const id = await createMatchService({
           ownerUid: user.uid,
           ownerNickname: user.nickname,
           title: match.title,
@@ -699,6 +716,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           note: match.note,
           joinMode: match.joinMode,
         });
+        await refreshMatches();
+        return id;
       }
       const newMatch: Match = {
         ...match,
@@ -715,16 +734,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMatches((prev) => [newMatch, ...prev]);
       return newMatch.id;
     },
-    [user],
+    [refreshMatches, user],
   );
 
   const closeMatch = useCallback((matchId: string) => {
     if (USE_FIREBASE) {
-      void closeMatchService(matchId);
+      void closeMatchService(matchId).then(() => refreshMatches());
       return;
     }
     setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, status: "closed" } : m)));
-  }, []);
+  }, [refreshMatches]);
 
   const updateMatchSettings = useCallback(
     async (
@@ -741,7 +760,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (USE_FIREBASE) {
         try {
-          return await updateMatchSettingsService(matchId, user.uid, {
+          const result = await updateMatchSettingsService(matchId, user.uid, {
             city: settings.city,
             district: settings.district,
             venue: settings.venue,
@@ -752,6 +771,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             totalSlots: settings.totalSlots,
             joinMode: settings.joinMode ?? "approval",
           });
+          await refreshMatches();
+          return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : "";
           if (message.includes("Quota exceeded") || message.includes("resource-exhausted")) {
@@ -764,7 +785,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, ...settings } : m)));
       return { ok: true, msg: "球局設定已更新" };
     },
-    [displayMatches, user],
+    [displayMatches, refreshMatches, user],
   );
 
   const applyMatch = useCallback(
@@ -795,6 +816,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               relatedId: matchId,
             });
           }
+          if (result.ok) await refreshMatches();
           return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : "";
@@ -842,7 +864,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return { ok: true, msg: "已成功加入球局" };
     },
-    [user, displayMatches, sendMessage],
+    [user, displayMatches, refreshMatches, sendMessage],
   );
 
   const respondToApplicant = useCallback(
@@ -862,6 +884,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (app?.appId) {
           await respondToApplication(app.appId, matchId, accept, applicantUid, applicant.nickname);
         }
+        await refreshMatches();
         setMessages((prev) =>
           prev.map((message) => {
             const isRequest =
@@ -951,7 +974,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [matches, displayMatches, applications, sendMessage, persistInboxMessage, addSystemChatMessage],
+    [matches, displayMatches, applications, refreshMatches, sendMessage, persistInboxMessage, addSystemChatMessage],
   );
 
   const undoApplicantDecision = useCallback(
@@ -974,12 +997,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
 
       if (USE_FIREBASE) {
-        void undoApplicationToPending(matchId, applicantUid, nextMatch.filledSlots);
+        void undoApplicationToPending(matchId, applicantUid, nextMatch.filledSlots).then(() => refreshMatches());
       } else {
         setMatches((prev) => prev.map((m) => (m.id === matchId ? nextMatch : m)));
       }
     },
-    [user?.uid, matches, displayMatches],
+    [user?.uid, matches, displayMatches, refreshMatches],
   );
 
   const addStudentNeed = useCallback(

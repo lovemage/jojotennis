@@ -79,7 +79,7 @@ function isMissingMatchesTable(error: { message?: string; code?: string } | null
   return Boolean(
     error &&
       (error.code === "PGRST205" ||
-        /Could not find the table 'public\\.(matches|match_applications)'|relation .*matches.* does not exist/i.test(
+        /Could not find the table 'public\.(matches|match_applications)'|relation .*matches.* does not exist/i.test(
           error.message ?? "",
         )),
   );
@@ -146,6 +146,9 @@ export async function PATCH(request: Request) {
   if (!body.matchId || !body.status) {
     return NextResponse.json({ error: "Missing matchId or status" }, { status: 400 });
   }
+  if (!["open", "closed", "cancelled"].includes(body.status)) {
+    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  }
 
   const supabase = getSupabaseServiceClient();
   const { error } = await supabase
@@ -190,6 +193,8 @@ export async function DELETE(request: Request) {
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await deleteRedisConversation(`match_${matchId}`).catch(() => undefined);
+  await deleteRedisConversation(`match_${matchId}`).catch((error) => {
+    console.warn("[admin/matches] failed to delete Redis conversation:", error);
+  });
   return NextResponse.json({ ok: true });
 }

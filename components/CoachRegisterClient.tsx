@@ -12,6 +12,7 @@ import {
   type PendingCoachRecord,
 } from "@/lib/pendingCoachService";
 import { uploadCoachIdImage } from "@/lib/storageUploads";
+import { auth } from "@/lib/firebase";
 
 type FormState = {
   realName: string;
@@ -150,6 +151,31 @@ export default function CoachRegisterClient() {
       const fresh = await fetchPendingCoach(user.uid);
       setExisting(fresh);
 
+      void (async () => {
+        try {
+          const idToken = await auth.currentUser?.getIdToken();
+          if (!idToken) return;
+          await fetch("/api/notify/coach-submitted", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              uid: user.uid,
+              email: user.email,
+              realName: form.realName.trim(),
+              city: form.city.trim(),
+              phone: form.phone.trim(),
+              nickname: form.nickname.trim(),
+              ntrpRange: form.ntrpRange.trim(),
+              pricePerHour: Number(form.pricePerHour),
+            }),
+          });
+        } catch (notifyError) {
+          console.warn("[coach-submitted] 通知信寄送失敗：", notifyError);
+        }
+      })();
     } catch (err) {
       setStatus({
         tone: "err",
