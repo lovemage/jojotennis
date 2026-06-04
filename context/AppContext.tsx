@@ -124,7 +124,7 @@ interface AppState {
     msg: Omit<Message, "id" | "timestamp" | "isRead" | "isHandled" | "handledAt">,
   ) => void;
   markAllRead: () => void;
-  addMatch: (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => void;
+  addMatch: (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => Promise<string>;
   updateMatchSettings: (
     matchId: string,
     settings: Pick<Match, "city" | "district" | "venue" | "date" | "startTime" | "endTime" | "ntrpRequired" | "totalSlots" | "joinMode">,
@@ -672,9 +672,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const addMatch = useCallback(
-    (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => {
+    async (match: Omit<Match, "id" | "filledSlots" | "applicants" | "status">) => {
       if (USE_FIREBASE && user) {
-        void createMatchService({
+        return createMatchService({
           ownerUid: user.uid,
           ownerNickname: user.nickname,
           title: match.title,
@@ -689,7 +689,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           note: match.note,
           joinMode: match.joinMode,
         });
-        return;
       }
       const newMatch: Match = {
         ...match,
@@ -704,6 +703,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : undefined,
       };
       setMatches((prev) => [newMatch, ...prev]);
+      return newMatch.id;
     },
     [user],
   );

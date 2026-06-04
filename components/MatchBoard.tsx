@@ -108,6 +108,8 @@ export default function MatchBoard() {
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joinBusy, setJoinBusy] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
   const [chatSettingsMatch, setChatSettingsMatch] = useState<Match | null>(null);
   const [chatSettingsSaving, setChatSettingsSaving] = useState(false);
   const [chatSettingsError, setChatSettingsError] = useState("");
@@ -196,8 +198,9 @@ export default function MatchBoard() {
     });
   }
 
-  function handleCreatePost(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCreatePost(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (createBusy) return;
     if (!user) {
       setShowLoginPrompt(true);
       return;
@@ -207,31 +210,48 @@ export default function MatchBoard() {
     const endTime = `${padHour(draft.endHour)}:${padMinute(draft.endMinute)}`;
     const selectedDate = draft.date ? draft.date.replaceAll("-", "/") : "";
 
-    addMatch({
-      title: draft.title || "新的揪球邀請",
-      ownerUid: user.uid,
-      ownerNickname: user.nickname,
-      city: draft.city,
-      district: draft.district || "地區待確認",
-      venue: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
-      date: selectedDate || "日期待確認",
-      weekday: getWeekday(draft.date) || "週期待確認",
-      startTime,
-      endTime,
-      ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
-      totalSlots: parsePeople(draft.totalPlayers),
-      note: draft.notes,
-      joinMode: draft.joinMode,
-    });
-    setDraft((currentDraft) => ({
-      ...currentDraft,
-      title: "",
-      district: "",
-      courtName: "",
-      date: "",
-      notes: "",
-    }));
-    closeSheet();
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      const title = draft.title || "新的揪球邀請";
+      const matchId = await addMatch({
+        title,
+        ownerUid: user.uid,
+        ownerNickname: user.nickname,
+        city: draft.city,
+        district: draft.district || "地區待確認",
+        venue: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
+        date: selectedDate || "日期待確認",
+        weekday: getWeekday(draft.date) || "週期待確認",
+        startTime,
+        endTime,
+        ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
+        totalSlots: parsePeople(draft.totalPlayers),
+        note: draft.notes,
+        joinMode: draft.joinMode,
+      });
+      const conversationId = getOrCreateConversation(user.uid, user.nickname, {
+        type: "match",
+        relatedId: matchId,
+        name: `揪球：${title}`,
+        ownerUid: user.uid,
+        systemMessage: `主揪已開啟「${title}」聊天室，請在這裡確認集合地點、費用與注意事項。\n請勿在平台外提前付款，謹防詐騙。`,
+      });
+      setDraft((currentDraft) => ({
+        ...currentDraft,
+        title: "",
+        district: "",
+        courtName: "",
+        date: "",
+        notes: "",
+      }));
+      closeSheet();
+      router.push(`/messages?conversation=${conversationId || `match_${matchId}`}&from=match`);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "建立球局失敗，請稍後再試");
+    } finally {
+      setCreateBusy(false);
+    }
   }
 
   async function joinMatch(match: Match, joinCode?: string) {
@@ -830,11 +850,13 @@ export default function MatchBoard() {
                   ? "需核准球局：球友申請後，需主揪同意才能發送聊天室訊息。"
                   : "私人球局：系統會產生 6 位數加入碼，分享給朋友即可加入。"}
               </p>
+              {createError ? <p className="text-sm font-bold text-red-600">{createError}</p> : null}
               <button
                 type="submit"
-                className="flex h-12 w-full items-center justify-center rounded-lg bg-clay text-sm font-bold text-white"
+                disabled={createBusy}
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-clay text-sm font-bold text-white disabled:opacity-50"
               >
-                發布揪球邀請
+                {createBusy ? "建立中" : "發布揪球邀請"}
               </button>
             </form>
           </div>
