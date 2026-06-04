@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import { subscribeToAllConversations, subscribeToConversations } from "@/lib/messageService";
+import { subscribeToConversations } from "@/lib/messageService";
 import { SUPER_ADMIN_EMAILS, USE_SUPABASE } from "@/lib/config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "@/lib/supabase";
 import type {
@@ -96,7 +96,7 @@ export function useFirebaseInboxListener(
 export function useFirebaseConversationListeners(
   enabled: boolean,
   userUid: string | undefined,
-  isAdmin: boolean,
+  _isAdmin: boolean,
   _messageUnsubs: MutableRefObject<Record<string, () => void>>,
   setConvMeta: (fn: (prev: ConvMeta) => ConvMeta) => void,
 ) {
@@ -104,17 +104,8 @@ export function useFirebaseConversationListeners(
     if (!enabled) return;
 
     let unsubConversations = () => {};
-    if (userUid && !isAdmin) {
+    if (userUid) {
       unsubConversations = subscribeToConversations(userUid, (items) => {
-        const nextMeta: ConvMeta = {};
-        for (const item of items) nextMeta[item.convId] = { ...item };
-        setConvMeta(() => nextMeta);
-      });
-    }
-
-    let adminUnsub = () => {};
-    if (isAdmin && userUid) {
-      adminUnsub = subscribeToAllConversations((items) => {
         const nextMeta: ConvMeta = {};
         for (const item of items) nextMeta[item.convId] = { ...item };
         setConvMeta(() => nextMeta);
@@ -123,7 +114,6 @@ export function useFirebaseConversationListeners(
 
     return () => {
       unsubConversations();
-      adminUnsub();
     };
-  }, [enabled, userUid, isAdmin, setConvMeta]);
+  }, [enabled, userUid, setConvMeta]);
 }

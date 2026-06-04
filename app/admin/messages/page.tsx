@@ -1,10 +1,27 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
-import { useApp } from "@/context/AppContext";
+import type { Conversation } from "@/context/AppContext";
+import {
+  deleteConversationById,
+  subscribeToAllConversations,
+} from "@/lib/messageService";
+import { toUiConversation } from "@/lib/mappers";
 
 export default function AdminMessagesPage() {
-  const { conversations, deleteConversation, deleteConversationMessage } = useApp();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+
+  useEffect(() => {
+    return subscribeToAllConversations((items) => {
+      setConversations(items.map((item) => toUiConversation(item.convId, item, [])));
+    });
+  }, []);
+
+  function deleteConversation(conversationId: string) {
+    void deleteConversationById(conversationId);
+    setConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
+  }
 
   return (
     <AdminGuard>
@@ -30,6 +47,9 @@ export default function AdminMessagesPage() {
                   <p className="mt-1 text-xs text-muted">
                     參與者：{conversation.participants.join(", ")}
                   </p>
+                  <p className="mt-1 text-xs text-muted">
+                    最後更新：{conversation.lastMessageTime ? new Date(conversation.lastMessageTime).toLocaleString("zh-TW") : "尚無訊息"}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -42,28 +62,6 @@ export default function AdminMessagesPage() {
                 >
                   刪除對話
                 </button>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                {conversation.messages.map((message) => (
-                  <div key={message.id} className="rounded-2xl bg-ivory p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold text-pine">
-                          {message.senderNickname} · {message.type}
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-muted">{message.content}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => deleteConversationMessage(conversation.id, message.id)}
-                        className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-clay"
-                      >
-                        刪除
-                      </button>
-                    </div>
-                  </div>
-                ))}
               </div>
             </article>
           ))}
