@@ -493,8 +493,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (USE_FIREBASE || (USE_SUPABASE && hasSupabaseConfig())) {
         void (async () => {
           if (type === "match" && options?.relatedId) {
-            await createMatchConversation(options.relatedId, options.name ?? targetNickname, options.ownerUid ?? user.uid);
-            if (options.systemMessage) await sendSystemMessage(`match_${options.relatedId}`, options.systemMessage);
+            const convId = `match_${options.relatedId}`;
+            if (options.systemMessage) void sendSystemMessage(convId, options.systemMessage);
+            void createMatchConversation(options.relatedId, options.name ?? targetNickname, options.ownerUid ?? user.uid).catch((error) => {
+              console.warn("[conversation] match metadata unavailable:", error);
+            });
             return;
           }
           if (type === "club" && options?.relatedId) {

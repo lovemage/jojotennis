@@ -70,9 +70,6 @@ export default function MatchBoard() {
   const router = useRouter();
   const { user, matches, addMatch, updateMatchSettings, applyMatch, getOrCreateConversation } = useApp();
   const dateInputRef = useRef<HTMLInputElement | null>(null);
-  if (typeof window !== "undefined") {
-    console.log("目前 matches：", matches.length);
-  }
   const [loading, setLoading] = useState(matches.length === 0);
   const [activeTab, setActiveTab] = useState<"find" | "create">("find");
 

@@ -138,7 +138,9 @@ export async function createMatch(data: {
     status: "open",
     createdAt: serverTimestamp(),
   });
-  await createMatchConversation(ref.id, data.title, data.ownerUid);
+  void createMatchConversation(ref.id, data.title, data.ownerUid).catch((error) => {
+    console.warn("[match] conversation metadata unavailable:", error);
+  });
   return ref.id;
 }
 
