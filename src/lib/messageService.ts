@@ -185,10 +185,12 @@ export function clearStoredChatMessages(convId: string) {
 function mergeMessages(existing: Message[], next: Message[]): Message[] {
   const map = new Map<string, Message>();
   for (const item of existing) {
-    map.set(item.msgId, item);
+    const normalized = normalizeMessage(item);
+    if (normalized) map.set(normalized.msgId, normalized);
   }
   for (const item of next) {
-    map.set(item.msgId, item);
+    const normalized = normalizeMessage(item);
+    if (normalized) map.set(normalized.msgId, normalized);
   }
   return Array.from(map.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
@@ -205,7 +207,7 @@ function equalMessages(left: Message[], right: Message[]) {
       item.senderNickname === next.senderNickname &&
       item.content === next.content &&
       item.msgType === next.msgType &&
-      item.createdAt.getTime() === next.createdAt.getTime() &&
+      toNumber(item.createdAt) === toNumber(next.createdAt) &&
       item.readBy.length === next.readBy.length &&
       item.readBy.every((uid, i) => uid === next.readBy[i])
     );
@@ -297,7 +299,9 @@ async function fetchChatMessages(convId: string, limit = MESSAGE_FETCH_LIMIT): P
   const data = await fetchJson<{ messages?: Message[] }>(
     `/api/chat/messages?conversationId=${encodeURIComponent(convId)}&limit=${limit}`,
   );
-  return data.messages ?? [];
+  return (data.messages ?? [])
+    .map((message) => normalizeMessage(message))
+    .filter((message): message is Message => message !== null);
 }
 
 function subscribeWithPolling(
