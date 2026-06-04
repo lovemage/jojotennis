@@ -126,6 +126,13 @@ async function verifyUser(request: Request) {
   }
 }
 
+async function getOptionalUser(request: Request) {
+  const header = request.headers.get("authorization") || "";
+  if (!header.startsWith("Bearer ")) return null;
+  const auth = await verifyUser(request);
+  return auth.ok ? auth : null;
+}
+
 function generateJoinCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -186,6 +193,13 @@ async function recalculateMatchFill(matchId: string) {
   return acceptedCount;
 }
 
+type MatchJoinResult = {
+  ok?: boolean;
+  msg?: string;
+  acceptedCount?: number;
+  isFull?: boolean;
+};
+
 async function ensureOwner(matchId: string, uid: string) {
   const match = await getMatch(matchId);
   if (!match || match.is_deleted) throw new Error("球局不存在");
@@ -194,67 +208,55 @@ async function ensureOwner(matchId: string, uid: string) {
 }
 
 async function joinAccepted(match: MatchRow, uid: string, nickname: string) {
-  if (match.owner_uid === uid) return { ok: false, msg: "主揪不需要申請" };
-  if (match.status === "closed" || match.filled_slots >= match.total_slots) {
-    return { ok: false, msg: "球局已額滿" };
-  }
-
   const supabase = getSupabaseServiceClient();
-  const apps = await listApplications(match.id);
-  const existing = apps.find((app) => app.applicant_uid === uid);
-  if (existing?.status === "accepted") return { ok: false, msg: "你已加入此球局" };
-  if (existing?.status === "pending") return { ok: false, msg: "已申請過此球局" };
+  const { data, error } = await supabase.rpc("match_join_accepted", {
+    p_match_id: match.id,
+    p_uid: uid,
+    p_nickname: nickname,
+  });
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as MatchJoinResult;
+  if (!result.ok) return { ok: false, msg: result.msg ?? "加入球局失敗" };
 
-  if (existing) {
-    const { error } = await supabase
-      .from("match_applications")
-      .update({
-        status: "accepted",
-        applicant_nickname: nickname,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existing.id);
-    if (error) throw new Error(error.message);
-  } else {
-    const { error } = await supabase.from("match_applications").insert({
-      match_id: match.id,
-      applicant_uid: uid,
-      applicant_nickname: nickname,
-      status: "accepted",
-    });
-    if (error) throw new Error(error.message);
-  }
-
-  const acceptedCount = await recalculateMatchFill(match.id);
   await addRedisConversationParticipant(`match_${match.id}`, uid);
   await addSystemMessage(`match_${match.id}`, `${nickname} 已加入球局！`);
-  if (acceptedCount >= match.total_slots) {
+  if (result.isFull) {
     await addSystemMessage(`match_${match.id}`, `「${match.title}」招募完成！祝大家打球愉快`);
   }
-  return { ok: true, msg: "已成功加入球局" };
+  return { ok: true, msg: result.msg ?? "已成功加入球局" };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await getOptionalUser(request);
   const supabase = getSupabaseServiceClient();
-  const [{ data: matches, error: matchError }, { data: applications, error: appError }] =
-    await Promise.all([
-      supabase
-        .from("matches")
-        .select("*")
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("match_applications")
-        .select("*")
-        .eq("is_deleted", false),
-    ]);
+  const { data: matches, error: matchError } = await supabase
+    .from("matches")
+    .select("*")
+    .eq("is_deleted", false)
+    .order("created_at", { ascending: false });
 
   if (matchError) return NextResponse.json({ error: matchError.message }, { status: 500 });
-  if (appError) return NextResponse.json({ error: appError.message }, { status: 500 });
+
+  let applications: AppRow[] = [];
+  if (auth) {
+    const ownedMatchIds = new Set(
+      ((matches ?? []) as MatchRow[])
+        .filter((match) => match.owner_uid === auth.uid)
+        .map((match) => match.id),
+    );
+    const { data: appRows, error: appError } = await supabase
+      .from("match_applications")
+      .select("*")
+      .eq("is_deleted", false);
+    if (appError) return NextResponse.json({ error: appError.message }, { status: 500 });
+    applications = ((appRows ?? []) as AppRow[]).filter(
+      (app) => app.applicant_uid === auth.uid || ownedMatchIds.has(app.match_id),
+    );
+  }
 
   return NextResponse.json({
     matches: ((matches ?? []) as MatchRow[]).map(mapMatch),
-    applications: ((applications ?? []) as AppRow[]).map(mapApplication),
+    applications: applications.map(mapApplication),
   });
 }
 
@@ -427,15 +429,21 @@ export async function PATCH(request: Request) {
       const apps = await listApplications(match.id);
       const app = apps.find((item) => item.applicant_uid === body.applicantUid && item.status === "pending");
       if (!app) throw new Error("申請不存在或已處理");
-      const nextStatus = body.accept ? "accepted" : "declined";
-      const { error } = await supabase
-        .from("match_applications")
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq("id", app.id);
-      if (error) throw new Error(error.message);
       if (body.accept) {
-        await recalculateMatchFill(match.id);
+        const { data, error } = await supabase.rpc("match_accept_application", {
+          p_match_id: match.id,
+          p_applicant_uid: app.applicant_uid,
+        });
+        if (error) throw new Error(error.message);
+        const result = (data ?? {}) as MatchJoinResult;
+        if (!result.ok) return NextResponse.json({ ok: false, msg: result.msg ?? "已達人數上限" });
         await addRedisConversationParticipant(`match_${match.id}`, app.applicant_uid);
+      } else {
+        const { error } = await supabase
+          .from("match_applications")
+          .update({ status: "declined", updated_at: new Date().toISOString() })
+          .eq("id", app.id);
+        if (error) throw new Error(error.message);
       }
       await addSystemMessage(
         `match_${match.id}`,
@@ -495,6 +503,12 @@ export async function PATCH(request: Request) {
         })
         .eq("id", match.id);
       if (error) throw new Error(error.message);
+      const { error: appError } = await supabase
+        .from("match_applications")
+        .update({ status: "removed", updated_at: new Date().toISOString() })
+        .eq("id", app.id);
+      if (appError) throw new Error(appError.message);
+      await recalculateMatchFill(match.id);
       await addSystemMessage(`match_${match.id}`, `系統紀錄：主辦權已移交給 ${body.applicantNickname}。`);
       return NextResponse.json({ ok: true });
     }
@@ -511,6 +525,17 @@ export async function PATCH(request: Request) {
         })
         .eq("id", match.id);
       if (error) throw new Error(error.message);
+      await addSystemMessage(`match_${match.id}`, `「${match.title}」已取消。感謝各位參與。`);
+      const { error: appsError } = await supabase
+        .from("match_applications")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("match_id", match.id)
+        .eq("is_deleted", false);
+      if (appsError) throw new Error(appsError.message);
       await deleteRedisConversation(`match_${match.id}`).catch((error) =>
         console.warn("[matches] failed to delete match conversation:", error),
       );

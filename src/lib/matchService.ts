@@ -13,14 +13,20 @@ async function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
+async function optionalAuthHeaders() {
+  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function matchApi<T>(init?: RequestInit): Promise<T> {
-  const headers = init?.method && init.method !== "GET" ? await authHeaders() : {};
+  const authHeader = init?.method && init.method !== "GET" ? await authHeaders() : await optionalAuthHeaders();
+  const requestHeaders = new Headers(init?.headers);
+  for (const [key, value] of Object.entries(authHeader)) {
+    requestHeaders.set(key, value);
+  }
   const response = await fetch("/api/matches", {
     ...init,
-    headers: {
-      ...headers,
-      ...(init?.headers ?? {}),
-    },
+    headers: requestHeaders,
   });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "球局 API 失敗");
