@@ -163,8 +163,8 @@ interface AppState {
   addAdminUser: (email: string) => void;
   saveNewsArticle: (article: NewsArticle, coverFile?: File) => Promise<void>;
   deleteNewsArticle: (articleId: string) => void;
-  updateMatchStatus: (matchId: string, status: Match["status"]) => void;
-  deleteMatch: (matchId: string) => void;
+  updateMatchStatus: (matchId: string, status: Match["status"]) => Promise<void>;
+  deleteMatch: (matchId: string) => Promise<void>;
   deleteConversation: (conversationId: string) => void;
   deleteConversationMessage: (conversationId: string, messageId: string) => void;
 }
@@ -1131,10 +1131,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateMatchStatus = useCallback(
-    (matchId: string, status: Match["status"]) => {
+    async (matchId: string, status: Match["status"]) => {
       if (!isAdmin) return;
       if (USE_FIREBASE) {
-        void adminUpdateMatchStatus(matchId, status);
+        await adminUpdateMatchStatus(matchId, status);
       } else {
         setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, status } : m)));
       }
@@ -1143,12 +1143,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteMatch = useCallback(
-    (matchId: string) => {
+    async (matchId: string) => {
       if (!isAdmin) return;
       if (USE_FIREBASE) {
-        void adminSoftDeleteMatch(matchId);
+        await adminSoftDeleteMatch(matchId);
         const conversationId = `match_${matchId}`;
-        void deleteConversationById(conversationId);
+        await deleteConversationById(conversationId);
         setConvMeta((prev) => {
           const next = { ...prev };
           delete next[conversationId];

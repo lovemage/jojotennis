@@ -38,6 +38,21 @@ export default function AdminMatchesPage() {
   const [rawMatches, setRawMatches] = useState<(SchemaMatch & { matchId?: string })[]>([]);
   const [applications, setApplications] = useState<MatchApplication[]>([]);
   const [fixing, setFixing] = useState(false);
+  const [actingMatchId, setActingMatchId] = useState<string | null>(null);
+
+  async function runMatchAction(matchId: string, action: () => Promise<void>) {
+    setActingMatchId(matchId);
+    try {
+      await action();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "操作失敗，請稍後再試";
+      alert(message.includes("Quota exceeded") || message.includes("resource-exhausted")
+        ? "Firebase 配額已用完，暫時無法更新球局狀態。"
+        : message);
+    } finally {
+      setActingMatchId(null);
+    }
+  }
 
   async function fixMissingFields() {
     setFixing(true);
@@ -146,23 +161,27 @@ export default function AdminMatchesPage() {
                   <>
                     <button
                       type="button"
+                      disabled={actingMatchId === match.id}
                       onClick={() =>
-                        updateMatchStatus(match.id, match.status === "open" ? "closed" : "open")
+                        void runMatchAction(match.id, () =>
+                          updateMatchStatus(match.id, match.status === "open" ? "closed" : "open"),
+                        )
                       }
-                      className="rounded-full bg-pine px-4 py-2 text-xs font-bold text-white"
+                      className="rounded-full bg-pine px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
                     >
-                      {match.status === "open" ? "設為結束" : "重新開放"}
+                      {actingMatchId === match.id ? "更新中" : match.status === "open" ? "設為結束" : "重新開放"}
                     </button>
                     <button
                       type="button"
+                      disabled={actingMatchId === match.id}
                       onClick={() => {
                         if (window.confirm(`確定刪除「${match.title}」？`)) {
-                          deleteMatch(match.id);
+                          void runMatchAction(match.id, () => deleteMatch(match.id));
                         }
                       }}
-                      className="rounded-full bg-ivory px-4 py-2 text-xs font-bold text-clay"
+                      className="rounded-full bg-ivory px-4 py-2 text-xs font-bold text-clay disabled:opacity-50"
                     >
-                      軟刪除
+                      {actingMatchId === match.id ? "刪除中" : "軟刪除"}
                     </button>
                   </>
                 ) : null}

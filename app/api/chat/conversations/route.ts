@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
+import { getAdminFirestore } from "@/lib/firebaseAdmin";
 import {
   addRedisConversationParticipant,
   deleteRedisConversation,
@@ -40,8 +41,15 @@ async function verifyUser(request: Request) {
   }
 }
 
-function isAdminEmail(email: string) {
-  return SUPER_ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(email.toLowerCase());
+async function isAdminEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (SUPER_ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(normalized)) return true;
+  try {
+    const snap = await getAdminFirestore().collection("adminUsers").doc(normalized).get();
+    return snap.exists;
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(request: Request) {
@@ -50,7 +58,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const admin = url.searchParams.get("admin") === "1";
-  if (admin && !isAdminEmail(auth.email)) {
+  if (admin && !(await isAdminEmail(auth.email))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -117,7 +125,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const auth = await verifyUser(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  if (!isAdminEmail(auth.email)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await isAdminEmail(auth.email))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const url = new URL(request.url);
   const convId = url.searchParams.get("conversationId")?.trim();
