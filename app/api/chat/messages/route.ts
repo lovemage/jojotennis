@@ -76,7 +76,8 @@ async function getMatchConversationRole(matchId: string, uid: string) {
 }
 
 async function canReadMatchConversation(matchId: string, uid: string) {
-  return Boolean(await getMatchConversationRole(matchId, uid));
+  const role = await getMatchConversationRole(matchId, uid);
+  return role === "owner" || role === "accepted";
 }
 
 async function canSendMatchConversation(matchId: string, uid: string) {
