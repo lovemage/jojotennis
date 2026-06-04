@@ -438,11 +438,13 @@ export default function MatchBoard() {
           const hasApplied = Boolean(myApplication);
           const isOwner = user?.uid === match.ownerUid;
           const canOpenChat = canOpenMatchConversation(match, user?.uid);
+          const isPendingApproval = myApplication?.status === "pending";
+          const isAccepted = myApplication?.status === "accepted";
+          const actionColumns = isOwner ? "grid-cols-2" : "grid-cols-1";
           return (
             <article
               key={match.id}
               onClick={isClosed ? undefined : () => openMatchConversation(match)}
-              aria-disabled={isClosed}
               className={`px-5 py-5 ${isClosed ? "cursor-default opacity-75" : "cursor-pointer"}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -498,19 +500,28 @@ export default function MatchBoard() {
                 ) : null}
               </div>
               {!isClosed ? (
-                <div className={`mt-4 grid gap-3 ${isOwner ? "grid-cols-3" : "grid-cols-2"}`}>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openMatchConversation(match);
-                    }}
-                    className={`flex h-11 items-center justify-center rounded-lg border text-sm font-bold ${
-                      canOpenChat ? "border-pine text-pine" : "border-muted/30 text-muted"
-                    }`}
-                  >
-                    {canOpenChat ? "開啟聊天室" : "等待核准"}
-                  </button>
+                <div className={`mt-4 grid gap-3 ${actionColumns}`}>
+                  {canOpenChat ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openMatchConversation(match);
+                      }}
+                      className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                    >
+                      開啟聊天室
+                    </button>
+                  ) : isPendingApproval ? (
+                    <button
+                      type="button"
+                      disabled
+                      onClick={(event) => event.stopPropagation()}
+                      className="flex h-11 items-center justify-center rounded-lg border border-muted/30 text-sm font-bold text-muted"
+                    >
+                      等待核准
+                    </button>
+                  ) : null}
                   {isOwner ? (
                     <button
                       type="button"
@@ -523,31 +534,21 @@ export default function MatchBoard() {
                       設定球局
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={joinBusy || hasApplied || isOwner || isFull}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void joinMatch(match);
-                    }}
-                    className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
-                      joinBusy || hasApplied || isOwner || isFull ? "bg-muted" : "bg-clay"
-                    }`}
-                  >
-                    {joinBusy
-                      ? "處理中"
-                      : myApplication?.status === "accepted"
-                      ? "已加入"
-                      : myApplication?.status === "pending"
-                        ? "待主揪核准"
-                        : hasApplied
-                          ? "已申請"
-                      : isOwner
-                        ? "你是主揪"
-                        : isFull
-                          ? "招募已滿"
-                          : "我要加入"}
-                  </button>
+                  {!hasApplied && !isOwner && !isAccepted ? (
+                    <button
+                      type="button"
+                      disabled={joinBusy || isFull}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void joinMatch(match);
+                      }}
+                      className={`flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white ${
+                        joinBusy || isFull ? "bg-muted" : "bg-clay"
+                      }`}
+                    >
+                      {joinBusy ? "處理中" : isFull ? "招募已滿" : "我要加入"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </article>
