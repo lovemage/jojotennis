@@ -59,7 +59,7 @@ function MessagesPageContent() {
     const source = getConversationMessages(selectedId);
     if (!Array.isArray(source)) return [];
     return source
-      .map((message) => {
+      .map((message): ChatMessage | null => {
         if (!message || typeof message !== "object") return null;
         const candidate = message as Partial<ChatMessage> & { timestamp?: unknown };
         const senderUid = safeText(candidate.senderUid, "");
@@ -73,14 +73,13 @@ function MessagesPageContent() {
           senderNickname,
           content,
           timestamp: typeof candidate.timestamp === "number" ? candidate.timestamp : Date.now(),
-          type: candidate.type === "system" ? "system" : "text",
+          type: (candidate.type === "system" ? "system" : "text") as ChatMessage["type"],
           readBy: Array.isArray(candidate.readBy)
             ? candidate.readBy.filter((uid): uid is string => typeof uid === "string")
             : [],
         };
       })
-      .filter((message): message is ChatMessage => message !== null)
-      .filter((message) => !!message.senderUid);
+      .filter((message): message is ChatMessage => message !== null && !!message.senderUid);
   }, [getConversationMessages, selectedId]);
 
   const selectedConversation: Conversation | undefined = useMemo(() => {
