@@ -1,3 +1,4 @@
+import { Realtime } from "ably";
 import { auth } from "./firebase";
 import type { Conversation, Message } from "./schema";
 
@@ -5,10 +6,19 @@ const MESSAGE_POLL_MS = 8000;
 const MESSAGE_HIDDEN_POLL_MS = 60000;
 const MESSAGE_FETCH_LIMIT = 30;
 const MESSAGE_RATE_LIMIT_BACKOFF_MS = 120000;
+const CHAT_QUOTA_DISABLED_MINUTES = 30;
+const CHAT_QUOTA_DISABLED_MS = CHAT_QUOTA_DISABLED_MINUTES * 60 * 1000;
 const CONVERSATION_POLL_MS = 120000;
 const ADMIN_CONVERSATION_POLL_MS = 120000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
 const MAX_ERROR_BACKOFF_MS = 300000;
+const CHAT_REALTIME_PROVIDER = process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably";
+const ABLY_CHANNEL_PREFIX = process.env.NEXT_PUBLIC_ABLY_CHANNEL_PREFIX ?? "chat";
+
+let chatServiceUnavailableUntil = 0;
+let chatServiceUnavailableMessage = "聊天室服務已暫時停用，請稍後再試。";
+
+let ablyRealtimeClient: { channels: { get: (name: string) => AblyChannel } } | null = null;
 
 function isRateLimitError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -19,13 +29,196 @@ function isRateLimitError(error: unknown) {
   );
 }
 
+function isRateLimitErrorMessage(message: string) {
+  return (
+    message.includes("max requests limit exceeded") ||
+    message.includes("HTTP 429") ||
+    message.includes("Too Many Requests")
+  );
+}
+
+function isChatServicePaused() {
+  return chatServiceUnavailableUntil > Date.now();
+}
+
+function disableChatService(message: string) {
+  chatServiceUnavailableMessage = message.includes("max requests limit exceeded")
+    ? "聊天室免費額度已用盡，聊天室目前已暫時停用，請稍後再試。"
+    : message || "聊天室服務已暫時停用，請稍後再試。";
+  chatServiceUnavailableUntil = Date.now() + CHAT_QUOTA_DISABLED_MS;
+}
+
+function recoverChatService() {
+  chatServiceUnavailableUntil = 0;
+  chatServiceUnavailableMessage = "聊天室服務已暫時停用，請稍後再試。";
+}
+
+export function isChatServiceUnavailable() {
+  return isChatServicePaused();
+}
+
+export function getChatServiceUnavailableMessage() {
+  return isChatServicePaused() ? chatServiceUnavailableMessage : "";
+}
+
+function checkChatServiceHealth() {
+  if (isChatServicePaused()) {
+    throw new Error(chatServiceUnavailableMessage);
+  }
+}
+
+function getAblyChannelName(convId: string) {
+  return `${ABLY_CHANNEL_PREFIX}:${convId}`;
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const parsedDate = Date.parse(value);
+    if (!Number.isNaN(parsedDate)) return parsedDate;
+  }
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate().getTime();
+  }
+  return Date.now();
+}
+
+type AblyMessage = { data?: unknown };
+type AblyChannel = {
+  subscribe: (event: string, listener: (message: AblyMessage) => void) => void;
+  unsubscribe: (event: string, listener: (message: AblyMessage) => void) => void;
+  publish: (eventName: string, data: Message) => Promise<unknown>;
+};
+
+type AblyRealtimeClient = {
+  channels: {
+    get: (name: string) => AblyChannel;
+  };
+};
+
+function normalizeMessage(raw: unknown): Message | null {
+  if (!raw || typeof raw !== "object") return null;
+  const message = raw as Partial<Message> & {
+    createdAt?: unknown;
+    msgType?: unknown;
+    readBy?: unknown;
+    convId?: unknown;
+    msgId?: unknown;
+    senderUid?: unknown;
+    senderNickname?: unknown;
+    content?: unknown;
+  };
+
+  const msgId = typeof message.msgId === "string" && message.msgId.trim() ? message.msgId : "";
+  const convId = typeof message.convId === "string" && message.convId.trim() ? message.convId : "";
+  const senderUid =
+    typeof message.senderUid === "string" && message.senderUid.trim() ? message.senderUid : "";
+  const senderNickname = typeof message.senderNickname === "string" ? message.senderNickname : "";
+  const content = typeof message.content === "string" ? message.content : "";
+  if (!msgId || !convId || !senderUid || !content) return null;
+
+  return {
+    msgId,
+    convId,
+    senderUid,
+    senderNickname,
+    content,
+    msgType: message.msgType === "system" ? "system" : "text",
+    readBy: Array.isArray(message.readBy) ? message.readBy.filter((item): item is string => typeof item === "string") : [],
+    createdAt: toNumber(message.createdAt),
+  };
+}
+
+function mergeMessages(existing: Message[], next: Message[]): Message[] {
+  const map = new Map<string, Message>();
+  for (const item of existing) {
+    map.set(item.msgId, item);
+  }
+  for (const item of next) {
+    map.set(item.msgId, item);
+  }
+  return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function equalMessages(left: Message[], right: Message[]) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const next = right[index];
+    if (!next) return false;
+    return (
+      item.msgId === next.msgId &&
+      item.convId === next.convId &&
+      item.senderUid === next.senderUid &&
+      item.senderNickname === next.senderNickname &&
+      item.content === next.content &&
+      item.msgType === next.msgType &&
+      item.createdAt === next.createdAt &&
+      item.readBy.length === next.readBy.length &&
+      item.readBy.every((uid, i) => uid === next.readBy[i])
+    );
+  });
+}
+
 async function getAuthHeader() {
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new Error("需要登入");
   return { Authorization: `Bearer ${token}` };
 }
 
+function getAblyClient() {
+  if (typeof window === "undefined" || CHAT_REALTIME_PROVIDER !== "ably") return null;
+  if (ablyRealtimeClient) return ablyRealtimeClient;
+
+  try {
+    const client = new Realtime({
+      authCallback: async (_params, callback) => {
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          if (!token) throw new Error("需要登入");
+          const response = await fetch("/api/chat/ably/token", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const text = await response.text();
+          if (!response.ok) {
+            throw new Error(text || `Ably token 失敗 (HTTP ${response.status})`);
+          }
+          callback(null, JSON.parse(text));
+        } catch (error) {
+          callback(error instanceof Error ? error : new Error(String(error ?? "Ably 認證失敗")), undefined as any);
+        }
+      },
+      autoConnect: true,
+    });
+
+    ablyRealtimeClient = client as unknown as AblyRealtimeClient;
+    return ablyRealtimeClient;
+  } catch (error) {
+    console.warn("[ably] 初始化失敗：", error);
+    return null;
+  }
+}
+
+async function publishMessageToRealtime(message: Message) {
+  const client = getAblyClient();
+  if (!client) return;
+  try {
+    const channel = client.channels.get(getAblyChannelName(message.convId));
+    await channel.publish("chat-message", message);
+  } catch (error) {
+    console.warn("[ably] 發佈失敗：", error);
+  }
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  checkChatServiceHealth();
   const headers = await getAuthHeader();
   const response = await fetch(url, {
     ...init,
@@ -43,23 +236,21 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     }
   })() as T & { error?: string };
   if (!response.ok) {
-    throw new Error(
-      `聊天室 API 失敗 (HTTP ${response.status}): ${payload.error || responseText || "request failed"}`,
-    );
+    const errorMessage = payload.error || responseText || "request failed";
+    if (isRateLimitErrorMessage(errorMessage)) {
+      disableChatService(errorMessage);
+    }
+    throw new Error(`聊天室 API 失敗 (HTTP ${response.status}): ${errorMessage}`);
   }
+  recoverChatService();
   return payload;
 }
 
 async function fetchChatMessages(convId: string, limit = MESSAGE_FETCH_LIMIT): Promise<Message[]> {
-  const headers = await getAuthHeader();
-  const response = await fetch(
+  checkChatServiceHealth();
+  const data = await fetchJson<{ messages?: Message[] }>(
     `/api/chat/messages?conversationId=${encodeURIComponent(convId)}&limit=${limit}`,
-    {
-    headers,
-    },
   );
-  if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "讀取訊息失敗");
-  const data = (await response.json()) as { messages?: Message[] };
   return data.messages ?? [];
 }
 
@@ -78,11 +269,14 @@ function subscribeWithPolling(
 
   const nextDelay = () => {
     const now = Date.now();
+    if (isChatServicePaused()) {
+      return Math.max(1000, Math.min(chatServiceUnavailableUntil - now, MAX_ERROR_BACKOFF_MS));
+    }
     if (rateLimitUntil > now) {
       return Math.max(1000, rateLimitUntil - now);
     }
-    const inactive = document.hidden || !document.hasFocus?.();
 
+    const inactive = document.hidden || !document.hasFocus?.();
     const baseDelay = inactive
       ? options.hiddenIntervalMs ?? Math.max(options.intervalMs, MESSAGE_HIDDEN_POLL_MS)
       : options.intervalMs;
@@ -97,6 +291,11 @@ function subscribeWithPolling(
 
   async function run() {
     if (stopped) return;
+    if (isChatServicePaused()) {
+      schedule(nextDelay());
+      return;
+    }
+
     try {
       await load();
       if (rateLimitUntil > Date.now()) {
@@ -106,6 +305,7 @@ function subscribeWithPolling(
     } catch (error) {
       if (isRateLimitError(error)) {
         rateLimitUntil = Date.now() + MESSAGE_RATE_LIMIT_BACKOFF_MS;
+        disableChatService(error instanceof Error ? error.message : String(error ?? ""));
         errorCount = Math.max(errorCount, 1);
       } else {
         errorCount += 1;
@@ -201,6 +401,7 @@ export async function sendMessage(
   senderNickname: string,
   content: string,
 ): Promise<void> {
+  checkChatServiceHealth();
   const t = content.trim();
   if (!t) throw new Error("訊息不可為空");
   if (t.length > 500) throw new Error("訊息不可超過 500 字");
@@ -220,8 +421,23 @@ export async function sendMessage(
       type: senderUid === "system" ? "system" : "text",
     }),
   });
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string; message?: unknown }
+    | null;
+
   if (!response.ok) {
-    throw new Error((await response.json().catch(() => null))?.error || "訊息送出失敗");
+    const message = payload?.error || "訊息送出失敗";
+    if (isRateLimitErrorMessage(message)) {
+      disableChatService(message);
+    }
+    throw new Error(message);
+  }
+
+  recoverChatService();
+
+  const createdMessage = normalizeMessage(payload?.message);
+  if (createdMessage) {
+    void publishMessageToRealtime(createdMessage);
   }
 
   void (async () => {
@@ -252,22 +468,77 @@ export async function sendSystemMessage(convId: string, content: string): Promis
 
 export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) => {
   let stopped = false;
+  let messages: Message[] = [];
+  let stopPolling: (() => void) | null = null;
+  let stopRealtime: (() => void) | null = null;
 
-  const unsubscribe = subscribeWithPolling(
-    async () => {
-      const messages = await fetchChatMessages(convId);
+  const applyMessages = (next: Message[]) => {
+    const merged = mergeMessages(messages, next);
+    if (!equalMessages(messages, merged)) {
+      messages = merged;
       if (!stopped) cb(messages);
-    },
-    {
+    }
+  };
+
+  const load = async () => {
+    const list = await fetchChatMessages(convId);
+    applyMessages(list);
+  };
+
+  const fallback = () => {
+    if (stopPolling) return;
+    stopPolling = subscribeWithPolling(load, {
       intervalMs: MESSAGE_POLL_MS,
       hiddenIntervalMs: MESSAGE_HIDDEN_POLL_MS,
       onError: (err) => console.error("[messages] 讀取失敗：", err),
-    },
-  );
+    });
+  };
+
+  const startRealtime = async () => {
+    if (CHAT_REALTIME_PROVIDER !== "ably") return false;
+    const client = getAblyClient();
+    if (!client) return false;
+
+    const channel = client.channels.get(getAblyChannelName(convId));
+    const onMessage = (message: AblyMessage) => {
+      const payload = normalizeMessage(message.data);
+      if (!payload || payload.convId !== convId) return;
+      applyMessages([payload]);
+    };
+
+    channel.subscribe("chat-message", onMessage);
+    stopRealtime = () => {
+      try {
+        channel.unsubscribe("chat-message", onMessage);
+      } catch {
+        // ignore
+      }
+    };
+
+    return true;
+  };
+
+  void (async () => {
+    try {
+      await load();
+      const canUseRealtime = await startRealtime();
+      if (!canUseRealtime) fallback();
+    } catch (error) {
+      console.error("[messages] 讀取失敗：", error);
+      fallback();
+    }
+  })();
 
   return () => {
     stopped = true;
-    unsubscribe();
+    if (stopPolling) {
+      stopPolling();
+      stopPolling = null;
+    }
+    if (stopRealtime) {
+      stopRealtime();
+      stopRealtime = null;
+    }
   };
 };
 
@@ -317,6 +588,7 @@ export const subscribeToAllConversations = (cb: (c: Conversation[]) => void) => 
 
 /** 將聊天室中他人訊息標記為已讀 */
 export async function markConversationMessagesRead(convId: string, uid: string): Promise<void> {
+  if (isChatServicePaused()) return;
   void uid;
   await fetchJson<{ ok: boolean }>("/api/chat/conversations", {
     method: "POST",
@@ -336,6 +608,7 @@ export async function upsertConversationSnapshot(data: {
   status?: string;
   ownerUid?: string;
 }): Promise<void> {
+  if (isChatServicePaused()) return;
   await fetchJson<{ conversation?: Conversation }>("/api/chat/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -344,8 +617,8 @@ export async function upsertConversationSnapshot(data: {
       convId: data.id,
       type: data.type,
       participants: data.participants,
-      name: data.name,
       relatedId: data.relatedId,
+      name: data.name,
       unreadCount: data.unreadCount ?? 0,
       status: data.status,
       ownerUid: data.ownerUid,
