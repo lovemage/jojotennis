@@ -49,7 +49,7 @@ async function verifyUser(request: Request) {
   }
 }
 
-async function canReadMatchConversation(matchId: string, uid: string) {
+async function getMatchConversationRole(matchId: string, uid: string) {
   const supabase = getSupabaseServiceClient();
   const { data: match } = await supabase
     .from("matches")
@@ -57,18 +57,27 @@ async function canReadMatchConversation(matchId: string, uid: string) {
     .eq("id", matchId)
     .eq("is_deleted", false)
     .maybeSingle();
-  if ((match as { owner_uid?: string } | null)?.owner_uid === uid) return true;
+  if ((match as { owner_uid?: string } | null)?.owner_uid === uid) return "owner";
 
   const { data: application } = await supabase
     .from("match_applications")
-    .select("id")
+    .select("status")
     .eq("match_id", matchId)
     .eq("applicant_uid", uid)
-    .eq("status", "accepted")
     .eq("is_deleted", false)
+    .in("status", ["pending", "accepted"])
     .limit(1)
     .maybeSingle();
-  return Boolean(application);
+  return ((application as { status?: string } | null)?.status ?? "") as "" | "pending" | "accepted";
+}
+
+async function canReadMatchConversation(matchId: string, uid: string) {
+  return Boolean(await getMatchConversationRole(matchId, uid));
+}
+
+async function canSendMatchConversation(matchId: string, uid: string) {
+  const role = await getMatchConversationRole(matchId, uid);
+  return role === "owner" || role === "accepted";
 }
 
 async function resolveConversation(convId: string) {
@@ -142,7 +151,7 @@ export async function POST(request: Request) {
   const matchId = conv.type === "match" ? conv.relatedId ?? convId.replace(/^match_/, "") : "";
   const canSend =
     conv.type === "match"
-      ? Boolean(matchId && (await canReadMatchConversation(matchId, auth.uid)))
+      ? Boolean(matchId && (await canSendMatchConversation(matchId, auth.uid)))
       : canSendConversation(conv, auth.uid);
   if (!canSend) {
     return NextResponse.json({ error: "主揪核准前無法在此聊天室發送訊息" }, { status: 403 });
