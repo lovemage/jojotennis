@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { ChatMessage, Conversation } from "@/context/AppContext";
@@ -38,6 +38,7 @@ function reportApproveError(error: unknown) {
 
 function MessagesPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     user,
     conversations,
@@ -137,17 +138,39 @@ function MessagesPageContent() {
   const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
   const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
-  const canSendSelectedConversation =
+  const shouldAllowUnknownMatchSend =
     !selectedConversation ||
     selectedConversation.type !== "match" ||
-    isMatchHost ||
-    selectedApplicant?.status === "accepted";
+    selectedConversation.participants.length === 0 ||
+    selectedConversation.participants.includes(user?.uid ?? "");
+  const canSendSelectedConversation =
+    !selectedConversation
+      ? false
+      : selectedConversation.type !== "match"
+        ? true
+        : selectedMatch
+          ? isMatchHost || selectedApplicant?.status === "accepted"
+          : shouldAllowUnknownMatchSend;
   const sendDisabledReason =
     selectedConversation?.type === "match" && !canSendSelectedConversation
       ? selectedApplicant?.status === "pending"
         ? "主揪核准前，你可以查看聊天室，但暫時無法發送訊息。"
         : "加入球局後才能在此聊天室發送訊息。"
       : "";
+  const conversationReadyNotice = selectedConversation?.type === "match" && !selectedMatch ? "球局資料同步中，部分權限判斷以系統結果為準..." : "";
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      window.setTimeout(() => {
+        if (window.location.pathname.startsWith("/messages")) {
+          router.replace("/match");
+        }
+      }, 150);
+      return;
+    }
+    router.replace("/match");
+  };
 
   useEffect(() => {
     if (selectedConversation) {
@@ -213,6 +236,10 @@ function MessagesPageContent() {
               <header className="flex items-center gap-3 border-b border-parchment bg-white px-4 py-3">
                 <Link
                   href="/match"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    handleBack();
+                  }}
                   className="shrink-0 rounded-full px-3 py-2 text-sm font-bold text-pine hover:bg-ivory"
                   aria-label="返回揪球列表"
                 >
@@ -226,6 +253,7 @@ function MessagesPageContent() {
                         ? "球局聊天室"
                         : "等待主揪核准"
                       : "私人對話"}
+                  {conversationReadyNotice ? ` (${conversationReadyNotice})` : ""}
                   </p>
                   {isMatchHost && selectedMatch ? (
                     <div className="mt-2 space-y-2">
