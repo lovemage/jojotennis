@@ -1,8 +1,6 @@
 import "server-only";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getMessaging } from "firebase-admin/messaging";
-import { getFirestore } from "firebase-admin/firestore";
 
 function getFirebaseAdminApp() {
   const existing = getApps()[0];
@@ -20,12 +18,4 @@ function getFirebaseAdminApp() {
 
 export function getAdminAuth() {
   return getAuth(getFirebaseAdminApp());
-}
-
-export function getAdminMessaging() {
-  return getMessaging(getFirebaseAdminApp());
-}
-
-export function getAdminFirestore() {
-  return getFirestore(getFirebaseAdminApp());
 }

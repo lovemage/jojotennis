@@ -1,22 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AdminGuard from "@/components/AdminGuard";
-import { useApp } from "@/context/AppContext";
-import { subscribeToAllMatches } from "@/lib/matchService";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  doc,
-  getDocs,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
+import { auth } from "@/lib/firebase";
 
 type AdminMatchRow = {
   id: string;
@@ -34,85 +21,73 @@ type AdminMatchRow = {
 };
 
 export default function AdminMatchesPage() {
-  const { updateMatchStatus, deleteMatch } = useApp();
-  const [rawMatches, setRawMatches] = useState<(SchemaMatch & { matchId?: string })[]>([]);
-  const [applications, setApplications] = useState<MatchApplication[]>([]);
-  const [fixing, setFixing] = useState(false);
+  const [matches, setMatches] = useState<AdminMatchRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [actingMatchId, setActingMatchId] = useState<string | null>(null);
+
+  async function getAuthHeaders() {
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) throw new Error("請重新登入管理員帳號");
+    return { Authorization: `Bearer ${token}` };
+  }
+
+  const loadMatches = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/admin/matches", { headers });
+      const payload = (await response.json().catch(() => ({}))) as {
+        matches?: AdminMatchRow[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(payload.error || "讀取球局失敗");
+      setMatches(payload.matches ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "讀取球局失敗");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   async function runMatchAction(matchId: string, action: () => Promise<void>) {
     setActingMatchId(matchId);
     try {
       await action();
+      await loadMatches();
     } catch (error) {
       const message = error instanceof Error ? error.message : "操作失敗，請稍後再試";
-      alert(message.includes("Quota exceeded") || message.includes("resource-exhausted")
-        ? "Firebase 配額已用完，暫時無法更新球局狀態。"
-        : message);
+      alert(message);
     } finally {
       setActingMatchId(null);
     }
   }
 
-  async function fixMissingFields() {
-    setFixing(true);
-    try {
-      const snap = await getDocs(collection(db, "matches"));
-      let count = 0;
-      for (const d of snap.docs) {
-        const data = d.data();
-        const updates: Record<string, unknown> = {};
-        if (data.isDeleted === undefined) updates.isDeleted = false;
-        if (data.deletedAt === undefined) updates.deletedAt = null;
-        if (data.updatedAt === undefined) updates.updatedAt = serverTimestamp();
-        if (Object.keys(updates).length > 0) {
-          await updateDoc(doc(db, "matches", d.id), updates);
-          count++;
-        }
-      }
-      alert(`修復完成，共 ${count} 筆`);
-    } catch (err) {
-      console.error("修復失敗：", err);
-      alert("修復失敗，請稍後再試");
-    } finally {
-      setFixing(false);
-    }
+  async function updateMatchStatus(matchId: string, status: string) {
+    const headers = await getAuthHeaders();
+    const response = await fetch("/api/admin/matches", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId, status }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) throw new Error(payload.error || "更新球局狀態失敗");
   }
 
-  useEffect(() => subscribeToAllMatches(setRawMatches), []);
+  async function deleteMatch(matchId: string) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`/api/admin/matches?matchId=${encodeURIComponent(matchId)}`, {
+      method: "DELETE",
+      headers,
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) throw new Error(payload.error || "軟刪除球局失敗");
+  }
 
   useEffect(() => {
-    return onSnapshot(
-      query(collection(db, "match_applications"), where("isDeleted", "==", false)),
-      (snap) => {
-        setApplications(
-          snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication),
-        );
-      },
-    );
-  }, []);
-
-  const matches: AdminMatchRow[] = useMemo(
-    () =>
-      rawMatches.map((m) => {
-        const id = m.matchId ?? "";
-        return {
-          id,
-          title: m.title,
-          ownerNickname: m.ownerNickname,
-          city: m.city,
-          district: m.district,
-          venue: m.venue,
-          date: m.date,
-          startTime: m.startTime,
-          endTime: m.endTime,
-          status: m.status,
-          isDeleted: Boolean(m.isDeleted),
-          applicantCount: applications.filter((a) => a.matchId === id).length,
-        };
-      }),
-    [rawMatches, applications],
-  );
+    void loadMatches();
+  }, [loadMatches]);
 
   return (
     <AdminGuard>
@@ -123,14 +98,8 @@ export default function AdminMatchesPage() {
           <p className="mt-4 leading-7 text-parchment">含已取消/已刪除揪球，可調整狀態或軟刪除。</p>
         </div>
 
-        <button
-          type="button"
-          disabled={fixing}
-          onClick={() => void fixMissingFields()}
-          className="mt-6 w-full rounded-full border border-clay px-4 py-3 text-sm font-bold text-clay disabled:opacity-50"
-        >
-          {fixing ? "修復中…" : "修復舊資料缺少欄位（一次性）"}
-        </button>
+        {loading ? <p className="mt-6 text-center text-sm text-muted">載入球局中…</p> : null}
+        {error ? <p className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">{error}</p> : null}
 
         <div className="mt-6 space-y-4">
           {matches.map((match) => (

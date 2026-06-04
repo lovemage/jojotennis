@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
-import { getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getSupabaseServiceClient } from "@/lib/supabase";
 import {
   addRedisConversationParticipant,
   deleteRedisConversation,
@@ -44,12 +44,13 @@ async function verifyUser(request: Request) {
 async function isAdminEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (SUPER_ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(normalized)) return true;
-  try {
-    const snap = await getAdminFirestore().collection("adminUsers").doc(normalized).get();
-    return snap.exists;
-  } catch {
-    return false;
-  }
+  const { data } = await getSupabaseServiceClient()
+    .from("users")
+    .select("role")
+    .eq("email", normalized)
+    .eq("is_deleted", false)
+    .maybeSingle();
+  return data?.role === "admin";
 }
 
 export async function GET(request: Request) {

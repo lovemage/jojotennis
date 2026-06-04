@@ -5,10 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, type Match, type Message } from "@/context/AppContext";
 import type { TennisLevel } from "@/data/tennisLevels";
-import { db } from "@/lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
-import { toUiMatch } from "@/lib/mappers";
-import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
 type ProfileDashboardContextProps = {
@@ -61,6 +57,7 @@ export default function ProfileDashboardContext({
   const router = useRouter();
   const {
     user,
+    matches,
     messages,
     studentNeeds,
     unreadCount,
@@ -77,68 +74,21 @@ export default function ProfileDashboardContext({
   }, [user?.nickname]);
   const [expandedMatchId, setExpandedMatchId] = useState("");
   const [expandedMessageId, setExpandedMessageId] = useState("");
-  const [profileMatches, setProfileMatches] = useState<(SchemaMatch & { matchId: string })[]>(
-    [],
-  );
-  const [profileApps, setProfileApps] = useState<MatchApplication[]>([]);
-
   useEffect(() => {
     if (activeTab === "messages") {
       markAllRead();
     }
   }, [activeTab, markAllRead]);
 
-  useEffect(() => {
-    if (!user?.uid) return;
-    const unsub = onSnapshot(
-      collection(db, "matches"),
-      (snap) => {
-        const rows = snap.docs
-          .map((d) => ({ matchId: d.id, ...d.data() }) as SchemaMatch & { matchId: string })
-          .filter((m) => m.isDeleted !== true);
-        rows.sort((a, b) => {
-          const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-          const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-          return tb - ta;
-        });
-        setProfileMatches(rows);
-      },
-      (err) => console.error("[matches] 監聽失敗：", err.code, err.message),
-    );
-    return () => unsub();
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-    const unsub = onSnapshot(
-      collection(db, "match_applications"),
-      (snap) => {
-        const rows = snap.docs
-          .map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication)
-          .filter((a) => a.applicantUid === user.uid && a.isDeleted !== true);
-        setProfileApps(rows);
-      },
-      (err) => console.error("[match_applications] 監聽失敗：", err.code, err.message),
-    );
-    return () => unsub();
-  }, [user?.uid]);
-
   const myCreatedMatches = useMemo(() => {
     if (!user?.uid) return [];
-    return profileMatches
-      .filter((m) => m.ownerUid === user.uid)
-      .map((m) => toUiMatch(m, m.matchId, profileApps));
-  }, [profileMatches, profileApps, user?.uid]);
+    return matches.filter((m) => m.ownerUid === user.uid);
+  }, [matches, user?.uid]);
 
   const myAppliedMatches = useMemo(() => {
     if (!user?.uid) return [];
-    const joinedIds = new Set(
-      profileApps.filter((a) => a.applicantUid === user.uid).map((a) => a.matchId),
-    );
-    return profileMatches
-      .filter((m) => joinedIds.has(m.matchId))
-      .map((m) => toUiMatch(m, m.matchId, profileApps));
-  }, [profileMatches, profileApps, user?.uid]);
+    return matches.filter((m) => m.applicants.some((a) => a.uid === user.uid));
+  }, [matches, user?.uid]);
   const inboxMessages = useMemo(
     () => messages.filter((message) => message.toUid === user?.uid),
     [messages, user?.uid],

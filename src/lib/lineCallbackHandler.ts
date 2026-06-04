@@ -2,7 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { exchangeLineCodeForToken, getLineEmailFromIdToken, getLineProfile } from "@/lib/lineAuth";
 import { getSupabaseServiceClient, hasSupabaseConfig } from "@/lib/supabase";
 
@@ -31,32 +31,6 @@ export async function handleLineCallback(request: Request) {
     const uid = `line_${profile.userId}`;
     const email = getLineEmailFromIdToken(token.id_token);
     const customToken = await getAdminAuth().createCustomToken(uid, { provider: "line" });
-
-    await getAdminFirestore()
-      .collection("users")
-      .doc(uid)
-      .set(
-        {
-          uid,
-          email,
-          nickname: profile.displayName,
-          avatarUrl: profile.pictureUrl ?? "",
-          provider: "line",
-          emailVerified: Boolean(email),
-          ntrp: "2.0",
-          region: "台北市",
-          yearsPlaying: 0,
-          role: "user",
-          isActive: true,
-          heartsReceived: 0,
-          bio: "",
-          isDeleted: false,
-          deletedAt: null,
-          updatedAt: new Date(),
-          createdAt: new Date(),
-        },
-        { merge: true },
-      );
 
     if (hasSupabaseConfig() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const supabase = getSupabaseServiceClient();

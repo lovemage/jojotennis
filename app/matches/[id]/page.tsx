@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useApp, type Match } from "@/context/AppContext";
 import {
   cancelMatch,
@@ -14,10 +14,7 @@ import {
 import { giveHeart } from "@/lib/heartService";
 import MatchReviewBanner from "@/components/MatchReviewBanner";
 import { isWithin24Hours } from "@/lib/timeUtils";
-import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
-import { toUiMatch } from "@/lib/mappers";
-import type { Match as SchemaMatch, MatchApplication } from "@/lib/schema";
+import type { MatchApplication } from "@/lib/schema";
 
 function isMatchExpired(match: Match): boolean {
   if (!match.date || !match.endTime) return false;
@@ -33,62 +30,29 @@ export default function MatchDetailPage() {
   const params = useParams<{ id: string }>();
   const matchId = params.id;
   const { user, matches, applyMatch } = useApp();
-  const [rawMatch, setRawMatch] = useState<(SchemaMatch & { matchId: string }) | null | undefined>(
-    undefined,
-  );
-  const [applications, setApplications] = useState<MatchApplication[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [transferUid, setTransferUid] = useState("");
   const [joinCodeInput, setJoinCodeInput] = useState("");
 
-  useEffect(() => {
-    if (!matchId) return;
-    let cancelled = false;
-    setRawMatch(undefined);
+  const match = useMemo(() => matches.find((item) => item.id === matchId), [matches, matchId]);
+  const applications = useMemo<MatchApplication[]>(
+    () =>
+      match?.applicants.map((applicant) => ({
+        appId: "",
+        matchId: match.id,
+        applicantUid: applicant.uid,
+        applicantNickname: applicant.nickname,
+        status: applicant.status,
+        isDeleted: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })) ?? [],
+    [match],
+  );
 
-    const fetchMatch = async () => {
-      try {
-        const snap = await getDoc(doc(db, "matches", matchId));
-        if (cancelled) return;
-        if (snap.exists()) {
-          setRawMatch({ matchId: snap.id, ...snap.data() } as SchemaMatch & { matchId: string });
-        } else {
-          setRawMatch(null);
-        }
-      } catch (err) {
-        console.error("讀取失敗：", err);
-        if (!cancelled) setRawMatch(null);
-      }
-    };
-
-    void fetchMatch();
-    return () => {
-      cancelled = true;
-    };
-  }, [matchId]);
-
-  useEffect(() => {
-    if (!matchId) return;
-    return onSnapshot(
-      query(
-        collection(db, "match_applications"),
-        where("matchId", "==", matchId),
-        where("isDeleted", "==", false),
-      ),
-      (snap) => {
-        setApplications(snap.docs.map((d) => ({ appId: d.id, ...d.data() }) as MatchApplication));
-      },
-      (err) => console.error("[match_applications] 監聽失敗：", err.code, err.message),
-    );
-  }, [matchId]);
-
-  const match = useMemo(() => {
-    if (rawMatch) return toUiMatch(rawMatch, rawMatch.matchId, applications);
-    return matches.find((item) => item.id === matchId);
-  }, [rawMatch, applications, matches, matchId]);
-
-  const loading = rawMatch === undefined && !match;
+  const loading = !match && matches.length === 0;
 
   const myApp = useMemo(
     () => applications.find((app) => app.applicantUid === user?.uid && !app.isDeleted),

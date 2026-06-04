@@ -2,26 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
 import { useApp } from "@/context/AppContext";
 import { DEFAULT_HERO_IMAGES, subscribeLandingHeroImages, type LandingHeroImage } from "@/lib/landingSettings";
 
 export default function HomePageContent() {
   const { matches, newsArticles } = useApp();
   const [heroImages, setHeroImages] = useState<LandingHeroImage[]>(DEFAULT_HERO_IMAGES);
-
-  useEffect(() => {
-    const test = async () => {
-      try {
-        const snap = await getDocs(collection(db, "matches"));
-        console.log("✅ Firebase 連線成功，matches 數量：", snap.size);
-      } catch (err) {
-        console.error("❌ Firebase 連線失敗：", err);
-      }
-    };
-    void test();
-  }, []);
 
   useEffect(() => subscribeLandingHeroImages(setHeroImages), []);
   const openMatches = matches.filter((match) => match.status === "open").length;

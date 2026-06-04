@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emailClient";
 import WelcomeEmail, { WELCOME_TEMPLATE_DEFAULTS } from "@/emails/Welcome";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -50,21 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Target user has no email" }, { status: 400 });
   }
 
-  let template = { ...WELCOME_TEMPLATE_DEFAULTS };
-  try {
-    const snap = await getAdminFirestore().collection("email_templates").doc("welcome").get();
-    if (snap.exists) {
-      const data = snap.data() as Partial<typeof WELCOME_TEMPLATE_DEFAULTS>;
-      template = {
-        subject: data.subject || WELCOME_TEMPLATE_DEFAULTS.subject,
-        greeting: data.greeting || WELCOME_TEMPLATE_DEFAULTS.greeting,
-        body: data.body || WELCOME_TEMPLATE_DEFAULTS.body,
-        ctaLabel: data.ctaLabel || WELCOME_TEMPLATE_DEFAULTS.ctaLabel,
-      };
-    }
-  } catch {
-    // fallback to defaults
-  }
+  const template = { ...WELCOME_TEMPLATE_DEFAULTS };
 
   await sendEmail({
     to: targetEmail,

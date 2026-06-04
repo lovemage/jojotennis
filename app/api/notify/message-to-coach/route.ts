@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emailClient";
 import TemplatedEmail from "@/emails/TemplatedEmail";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { getSupabaseServiceClient } from "@/lib/supabase";
 import { getRedisConversation, listRedisChatMessages } from "@/lib/upstashChat";
-import { notifyUser } from "@/lib/notificationTriggers";
 import {
   EMAIL_TEMPLATE_DEFAULTS,
   EMAIL_TEMPLATE_DEFAULT_CTA_PATH,
 } from "@/lib/emailTemplateDefaults";
 
 export const runtime = "nodejs";
-
-type UserDoc = { nickname?: string; email?: string };
-type CoachDoc = { uid?: string; isDeleted?: boolean; nickname?: string };
 
 async function verifyCaller(request: Request, expectedUid: string) {
   const header = request.headers.get("authorization") || "";
@@ -43,8 +40,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const firestore = getAdminFirestore();
-
   const conv = await getRedisConversation(body.convId);
   if (!conv) {
     return NextResponse.json({ skipped: "conversation not found" });
@@ -57,25 +52,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ skipped: "recipient not resolvable" });
   }
 
-  // 收件人是否為已通過審核的教練
-  const coachQuery = await firestore
-    .collection("coaches")
-    .where("uid", "==", recipientUid)
-    .get();
-  const isCoach = coachQuery.docs.some(
-    (d) => (d.data() as CoachDoc).isDeleted !== true,
-  );
-  if (!isCoach) {
+  const supabase = getSupabaseServiceClient();
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("uid,nickname,email,role")
+    .in("uid", [body.senderUid, recipientUid])
+    .eq("is_deleted", false);
+  if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 });
+
+  const sender = users?.find((row) => row.uid === body.senderUid);
+  const recipient = users?.find((row) => row.uid === recipientUid);
+  if (!sender || !recipient) {
+    return NextResponse.json({ skipped: "sender or recipient not found" });
+  }
+  if (recipient?.role !== "coach") {
     return NextResponse.json({ skipped: "recipient not coach" });
   }
 
-  // 取雙方暱稱與收件人 email
-  const [senderSnap, recipientSnap] = await Promise.all([
-    firestore.collection("users").doc(body.senderUid).get(),
-    firestore.collection("users").doc(recipientUid).get(),
-  ]);
-  const sender = (senderSnap.data() as UserDoc | undefined) ?? {};
-  const recipient = (recipientSnap.data() as UserDoc | undefined) ?? {};
   const senderName = sender.nickname || "一位學員";
   const recipientName = recipient.nickname || "教練";
 
@@ -91,18 +84,6 @@ export async function POST(request: Request) {
   const appBaseUrl = (process.env.APP_BASE_URL ?? "https://jojotennis.com").replace(/\/$/, "");
   const messagesUrl = appBaseUrl + EMAIL_TEMPLATE_DEFAULT_CTA_PATH.message_to_coach;
 
-  // FCM push（每一則都發）
-  let pushResult: { sent: number } = { sent: 0 };
-  try {
-    pushResult = await notifyUser(recipientUid, {
-      title: `${senderName} 傳來訊息`,
-      body: "您有一則新訊息，請至 App 內查看。",
-      url: "/messages",
-    });
-  } catch (err) {
-    console.warn("[message-to-coach] push 失敗：", err);
-  }
-
   let emailSent = false;
   const errors: string[] = [];
 
@@ -111,24 +92,7 @@ export async function POST(request: Request) {
       errors.push("recipient has no email");
     } else {
       const defaults = EMAIL_TEMPLATE_DEFAULTS.message_to_coach;
-      let template = { ...defaults };
-      try {
-        const tplSnap = await firestore
-          .collection("email_templates")
-          .doc("message_to_coach")
-          .get();
-        if (tplSnap.exists) {
-          const data = tplSnap.data() as Partial<typeof defaults>;
-          template = {
-            subject: data.subject || defaults.subject,
-            greeting: data.greeting || defaults.greeting,
-            body: data.body || defaults.body,
-            ctaLabel: data.ctaLabel || defaults.ctaLabel,
-          };
-        }
-      } catch {
-        // fallback
-      }
+      const template = { ...defaults };
 
       try {
         await sendEmail({
@@ -154,7 +118,6 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    pushSent: pushResult.sent,
     emailSent,
     isFirstMessage,
     errors,

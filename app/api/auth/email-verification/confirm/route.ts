@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyEmailVerificationToken } from "@/lib/emailVerification";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { getSupabaseServiceClient, hasSupabaseConfig } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -18,14 +18,6 @@ export async function GET(request: Request) {
     await getAdminAuth().updateUser(uid, { email, emailVerified: true });
 
     const now = new Date();
-    await getAdminFirestore().collection("users").doc(uid).set(
-      {
-        email,
-        emailVerified: true,
-        updatedAt: now,
-      },
-      { merge: true },
-    );
 
     if (hasSupabaseConfig() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       await getSupabaseServiceClient()

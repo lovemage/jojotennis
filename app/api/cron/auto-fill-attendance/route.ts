@@ -29,10 +29,5 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await supabase
-    .from("fcm_tokens")
-    .delete()
-    .lt("last_seen_at", new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString());
-
   return NextResponse.json({ updated: data?.length ?? 0 });
 }

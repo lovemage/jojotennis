@@ -300,8 +300,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Firestore 即時監聽 ─────────────────────────────────────────────────────
+  const enableLegacyFirestoreListeners = false;
 
-  useFirebaseCoreListeners(true, user?.uid, {
+  useFirebaseCoreListeners(enableLegacyFirestoreListeners, user?.uid, {
     setRawSchemaMatches,
     setApplications,
     setUsers,
@@ -311,7 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAdminEmails,
   });
 
-  useFirebaseInboxListener(true, user?.uid, setMessages);
+  useFirebaseInboxListener(enableLegacyFirestoreListeners, user?.uid, setMessages);
 
   useFirebaseConversationListeners(
     true,

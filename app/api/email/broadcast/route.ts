@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emailClient";
 import BroadcastEmail from "@/emails/Broadcast";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
+import { getSupabaseServiceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -42,15 +43,15 @@ async function sendOne(to: string, subject: string, body: string, uid?: string) 
 }
 
 async function listActiveUserEmails(): Promise<Array<{ email: string; uid: string }>> {
-  const snap = await getAdminFirestore().collection("users").get();
-  const results: Array<{ email: string; uid: string }> = [];
-  snap.docs.forEach((doc) => {
-    const data = doc.data() as { email?: string; isActive?: boolean };
-    if (data.isActive === false) return;
-    if (!data.email) return;
-    results.push({ email: data.email, uid: doc.id });
-  });
-  return results;
+  const { data, error } = await getSupabaseServiceClient()
+    .from("users")
+    .select("uid,email")
+    .eq("is_active", true)
+    .eq("is_deleted", false);
+  if (error) throw error;
+  return (data ?? [])
+    .map((row) => ({ uid: String(row.uid ?? ""), email: String(row.email ?? "") }))
+    .filter((row) => row.uid && row.email);
 }
 
 export async function POST(request: Request) {
