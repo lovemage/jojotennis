@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { ChatMessage, Conversation, Match } from "@/context/AppContext";
 import {
+  clearStoredChatMessages,
   getChatServiceUnavailableMessage,
   isChatServiceUnavailable,
   sendMessage,
@@ -140,6 +141,12 @@ function MessagesPageContent() {
   const selectedApplicant = selectedMatchApplicants.find((applicant) => applicant.uid === user?.uid);
   const isMatchHost = selectedConversation?.type === "match" && selectedMatch?.ownerUid === user?.uid;
   const isListedParticipant = selectedConversation?.participants.includes(user?.uid ?? "") === true;
+  const isChatClosed = selectedConversation?.type === "match" && selectedMatch?.status === "closed";
+  const canReadSelectedConversation = (() => {
+    if (!selectedConversation || isChatClosed) return false;
+    if (selectedConversation.type !== "match") return true;
+    return isMatchHost || isListedParticipant || selectedApplicant?.status === "accepted";
+  })();
   const pendingApplicants = selectedMatchApplicants.filter((applicant) => applicant.status === "pending");
   const chatServiceMessage = getChatServiceUnavailableMessage();
   const isChatDisabled = chatServiceUnavailable || Boolean(chatServiceMessage);
@@ -152,7 +159,7 @@ function MessagesPageContent() {
   }, []);
 
   const canSendSelectedConversation = (() => {
-    if (!selectedConversation || isChatDisabled) return false;
+    if (!selectedConversation || isChatDisabled || !canReadSelectedConversation) return false;
     if (selectedConversation.type !== "match") return true;
     if (isMatchHost || isListedParticipant || selectedApplicant?.status === "accepted") return true;
     return !selectedMatch;
@@ -186,9 +193,13 @@ function MessagesPageContent() {
 
   useEffect(() => {
     if (!selectedId) return;
+    if (!canReadSelectedConversation) {
+      clearStoredChatMessages(selectedId);
+      return;
+    }
     const unsubscribe = subscribeConversationMessages(selectedId);
     return unsubscribe;
-  }, [selectedId, subscribeConversationMessages]);
+  }, [canReadSelectedConversation, selectedId, subscribeConversationMessages]);
 
   async function submitMessage(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -318,7 +329,11 @@ function MessagesPageContent() {
                     {chatServiceMessage}
                   </div>
                 ) : null}
-                {selectedConversation.messages.length > 0 ? (
+                {!canReadSelectedConversation ? (
+                  <div className="rounded-2xl border border-parchment bg-white px-4 py-3 text-sm font-bold leading-6 text-muted">
+                    {isChatClosed ? "聊天室已關閉，歷史訊息不可查看。" : "主揪同意加入後才能查看聊天內容。"}
+                  </div>
+                ) : selectedConversation.messages.length > 0 ? (
                   selectedConversation.messages.map((message) => {
                     const isMine = message.senderUid === user.uid;
                     const isSystem = message.type === "system";

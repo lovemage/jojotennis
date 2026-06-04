@@ -14,6 +14,8 @@ const MAX_ERROR_BACKOFF_MS = 300000;
 const CHAT_REALTIME_PROVIDER = process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably";
 const ABLY_CHANNEL_PREFIX = process.env.NEXT_PUBLIC_ABLY_CHANNEL_PREFIX ?? "chat";
 const CHAT_ENABLE_POLLING_FALLBACK = process.env.NEXT_PUBLIC_CHAT_ENABLE_POLLING_FALLBACK === "true";
+const CHAT_LOCAL_STORAGE_PREFIX = "jojo-chat";
+const CHAT_LOCAL_STORAGE_MAX_MESSAGES = 300;
 
 let chatServiceUnavailableUntil = 0;
 let chatServiceUnavailableMessage = "聊天室服務已暫時停用，請稍後再試。";
@@ -132,6 +134,52 @@ function normalizeMessage(raw: unknown): Message | null {
     readBy: Array.isArray(message.readBy) ? message.readBy.filter((item): item is string => typeof item === "string") : [],
     createdAt: new Date(toNumber(message.createdAt)),
   };
+}
+
+function getLocalMessageKey(convId: string) {
+  return `${CHAT_LOCAL_STORAGE_PREFIX}:${convId}:messages`;
+}
+
+function readLocalMessages(convId: string): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(getLocalMessageKey(convId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => normalizeMessage(item))
+      .filter((message): message is Message => message !== null);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalMessages(convId: string, messages: Message[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const limited = messages.slice(-CHAT_LOCAL_STORAGE_MAX_MESSAGES);
+    window.localStorage.setItem(
+      getLocalMessageKey(convId),
+      JSON.stringify(
+        limited.map((message) => ({
+          ...message,
+          createdAt: message.createdAt.toISOString(),
+        })),
+      ),
+    );
+  } catch {
+    // Local browser storage is best-effort.
+  }
+}
+
+export function clearStoredChatMessages(convId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(getLocalMessageKey(convId));
+  } catch {
+    // ignore
+  }
 }
 
 function mergeMessages(existing: Message[], next: Message[]): Message[] {
@@ -435,6 +483,7 @@ export async function sendMessage(
 
   const createdMessage = normalizeMessage(payload?.message);
   if (createdMessage) {
+    writeLocalMessages(convId, mergeMessages(readLocalMessages(convId), [createdMessage]));
     void publishMessageToRealtime(createdMessage);
   }
 
@@ -466,7 +515,7 @@ export async function sendSystemMessage(convId: string, content: string): Promis
 
 export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) => {
   let stopped = false;
-  let messages: Message[] = [];
+  let messages: Message[] = readLocalMessages(convId);
   let stopPolling: (() => void) | null = null;
   let stopRealtime: (() => void) | null = null;
 
@@ -474,6 +523,7 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
     const merged = mergeMessages(messages, next);
     if (!equalMessages(messages, merged)) {
       messages = merged;
+      writeLocalMessages(convId, messages);
       if (!stopped) cb(messages);
     }
   };
@@ -519,6 +569,7 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
 
   void (async () => {
     try {
+      if (messages.length > 0 && !stopped) cb(messages);
       await load();
       const canUseRealtime = await startRealtime();
       if (!canUseRealtime) fallback();

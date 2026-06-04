@@ -20,6 +20,17 @@ type ConversationDoc = {
   relatedId?: string;
 };
 
+type ChatMessageRow = {
+  id: string;
+  conv_id: string;
+  sender_uid: string;
+  sender_nickname: string;
+  content: string;
+  msg_type: "text" | "system";
+  read_by: string[] | null;
+  created_at: string;
+};
+
 async function verifyFirebaseTokenWithRest(token: string) {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) throw new Error("Missing NEXT_PUBLIC_FIREBASE_API_KEY");
@@ -57,11 +68,13 @@ async function getMatchConversationRole(matchId: string, uid: string) {
   const supabase = getSupabaseServiceClient();
   const { data: match } = await supabase
     .from("matches")
-    .select("owner_uid")
+    .select("owner_uid,status")
     .eq("id", matchId)
     .eq("is_deleted", false)
     .maybeSingle();
-  if ((match as { owner_uid?: string } | null)?.owner_uid === uid) return "owner";
+  const matchRow = match as { owner_uid?: string; status?: string } | null;
+  if (!matchRow || matchRow.status === "closed" || matchRow.status === "cancelled") return "";
+  if (matchRow.owner_uid === uid) return "owner";
 
   const { data: application } = await supabase
     .from("match_applications")
@@ -73,6 +86,53 @@ async function getMatchConversationRole(matchId: string, uid: string) {
     .limit(1)
     .maybeSingle();
   return ((application as { status?: string } | null)?.status ?? "") as "" | "pending" | "accepted";
+}
+
+function mapChatMessage(row: ChatMessageRow) {
+  return {
+    msgId: row.id,
+    convId: row.conv_id,
+    senderUid: row.sender_uid,
+    senderNickname: row.sender_nickname,
+    content: row.content,
+    msgType: row.msg_type,
+    readBy: Array.isArray(row.read_by) ? row.read_by : [],
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+async function listSupabaseChatMessages(convId: string, limit: number) {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("chat_messages")
+    .select("id,conv_id,sender_uid,sender_nickname,content,msg_type,read_by,created_at")
+    .eq("conv_id", convId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ChatMessageRow[]).reverse().map((row) => mapChatMessage(row));
+}
+
+async function saveSupabaseChatMessage(message: {
+  msgId: string;
+  convId: string;
+  senderUid: string;
+  senderNickname: string;
+  content: string;
+  msgType: "text" | "system";
+  readBy: string[];
+  createdAt: number;
+}) {
+  const { error } = await getSupabaseServiceClient().from("chat_messages").upsert({
+    id: message.msgId,
+    conv_id: message.convId,
+    sender_uid: message.senderUid,
+    sender_nickname: message.senderNickname,
+    content: message.content,
+    msg_type: message.msgType,
+    read_by: message.readBy,
+    created_at: new Date(message.createdAt).toISOString(),
+  });
+  if (error) throw new Error(error.message);
 }
 
 async function canReadMatchConversation(matchId: string, uid: string) {
@@ -140,8 +200,8 @@ export async function GET(request: Request) {
     }
   }
 
-  void limit;
-  return NextResponse.json({ messages: [] });
+  const messages = await listSupabaseChatMessages(convId, limit);
+  return NextResponse.json({ messages });
 }
 
 export async function POST(request: Request) {
@@ -183,7 +243,9 @@ export async function POST(request: Request) {
     createdAt: Date.now(),
   };
 
-  if (!isAblyChatMode()) {
+  if (isAblyChatMode()) {
+    await saveSupabaseChatMessage(message);
+  } else {
     try {
       await appendRedisChatMessage(convId, message);
       await updateRedisConversationAfterMessage(
