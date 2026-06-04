@@ -187,10 +187,10 @@ function MessagesPageContent() {
   };
 
   useEffect(() => {
-    if (selectedConversation) {
+    if (selectedConversation?.id) {
       markConversationRead(selectedConversation.id);
     }
-  }, [markConversationRead, selectedConversation]);
+  }, [markConversationRead, selectedConversation?.id]);
 
   useEffect(() => {
     if (!selectedId) return;

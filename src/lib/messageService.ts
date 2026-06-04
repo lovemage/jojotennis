@@ -14,6 +14,7 @@ const CONVERSATION_HIDDEN_POLL_MS = 120000;
 const MAX_ERROR_BACKOFF_MS = 300000;
 const CHAT_REALTIME_PROVIDER = process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably";
 const ABLY_CHANNEL_PREFIX = process.env.NEXT_PUBLIC_ABLY_CHANNEL_PREFIX ?? "chat";
+const CHAT_ENABLE_POLLING_FALLBACK = process.env.NEXT_PUBLIC_CHAT_ENABLE_POLLING_FALLBACK === "true";
 
 let chatServiceUnavailableUntil = 0;
 let chatServiceUnavailableMessage = "聊天室服務已暫時停用，請稍後再試。";
@@ -486,6 +487,7 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
   };
 
   const fallback = () => {
+    if (!CHAT_ENABLE_POLLING_FALLBACK) return;
     if (stopPolling) return;
     stopPolling = subscribeWithPolling(load, {
       intervalMs: MESSAGE_POLL_MS,
@@ -546,22 +548,18 @@ export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) =>
 {
   let stopped = false;
 
-  const unsubscribe = subscribeWithPolling(
-    async () => {
+  void (async () => {
+    try {
       const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations");
       if (!stopped) cb(data.conversations ?? []);
-    },
-    {
-      intervalMs: CONVERSATION_POLL_MS,
-      hiddenIntervalMs: CONVERSATION_HIDDEN_POLL_MS,
-      onError: (err) => console.error("[conversations] 讀取失敗：", err),
-    },
-  );
+    } catch (err) {
+      console.error("[conversations] 讀取失敗：", err);
+    }
+  })();
 
   void uid;
   return () => {
     stopped = true;
-    unsubscribe();
   };
 };
 

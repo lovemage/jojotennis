@@ -205,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [convMeta, setConvMeta] = useState<Record<string, SchemaConversation & Partial<Conversation>>>({});
   const [convMessages, setConvMessages] = useState<Record<string, ChatMessage[]>>({});
   const messageUnsubs = useRef<Record<string, () => void>>({});
+  const markReadLastAt = useRef<Record<string, number>>({});
   const [accountDisabledMessage, setAccountDisabledMessage] = useState<string | null>(null);
 
   const isAdmin = useMemo(
@@ -669,6 +670,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const markConversationRead = useCallback(
     (conversationId: string) => {
       if (USE_FIREBASE && user?.uid) {
+        const now = Date.now();
+        if (now - (markReadLastAt.current[conversationId] ?? 0) < 30000) {
+          return;
+        }
+        markReadLastAt.current[conversationId] = now;
         void markConversationMessagesRead(conversationId, user.uid);
         setConvMeta((prev) => ({
           ...prev,
