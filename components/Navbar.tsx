@@ -197,6 +197,19 @@ export default function Navbar() {
           onClick={() => router.push("/")}
           icon={<HomeIcon active={pathname === "/"} />}
         />
+        <DropdownNavButton
+          active={courtCoachActive}
+          label="球場/教練"
+          icon={<CourtCoachIcon active={courtCoachActive} />}
+          align="right"
+          isOpen={openDropdown === "courts"}
+          onToggle={() => setOpenDropdown((current) => (current === "courts" ? null : "courts"))}
+          onClose={() => setOpenDropdown(null)}
+          links={[
+            { href: "/courts", label: "球場", tone: "pine" },
+            { href: "/coach", label: "教練", tone: "gold" },
+          ]}
+        />
         <NavButton
           active={pathname === "/match"}
           label="揪球"
@@ -214,19 +227,6 @@ export default function Navbar() {
           links={[
             { href: "/reviews", label: "評測", tone: "pine" },
             { href: "/news", label: "新聞", tone: "gold" },
-          ]}
-        />
-        <DropdownNavButton
-          active={courtCoachActive}
-          label="球場/教練"
-          icon={<CourtCoachIcon active={courtCoachActive} />}
-          align="right"
-          isOpen={openDropdown === "courts"}
-          onToggle={() => setOpenDropdown((current) => (current === "courts" ? null : "courts"))}
-          onClose={() => setOpenDropdown(null)}
-          links={[
-            { href: "/courts", label: "球場", tone: "pine" },
-            { href: "/coach", label: "教練", tone: "gold" },
           ]}
         />
       </div>

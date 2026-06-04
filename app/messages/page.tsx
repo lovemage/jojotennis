@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
-import type { Conversation } from "@/context/AppContext";
+import type { ChatMessage, Conversation } from "@/context/AppContext";
 import { sendMessage } from "@/lib/messageService";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
@@ -49,10 +49,21 @@ function MessagesPageContent() {
     applicantUid: string;
   } | null>(null);
 
+  const safeConversationMessages = useMemo<ChatMessage[]>(() => {
+    const source = getConversationMessages(selectedId);
+    if (!Array.isArray(source)) return [];
+    return source.filter(
+      (message): message is ChatMessage =>
+        !!message &&
+        typeof message.id === "string" &&
+        typeof message.senderUid === "string" &&
+        typeof message.senderNickname === "string" &&
+        typeof message.content === "string",
+    );
+  }, [getConversationMessages, selectedId]);
+
   const selectedConversation: Conversation | undefined = useMemo(() => {
     if (!selectedId) return undefined;
-
-    const messages = getConversationMessages(selectedId);
 
     if (selectedId.startsWith("match_")) {
       const matchId = selectedId.replace(/^match_/, "");
@@ -67,7 +78,7 @@ function MessagesPageContent() {
           ],
           name: `揪球：${match.title}`,
           relatedId: match.id,
-          messages,
+          messages: safeConversationMessages,
           unreadCount: 0,
           ownerUid: match.ownerUid,
         };
@@ -75,8 +86,8 @@ function MessagesPageContent() {
     }
 
     const existing = conversations.find((conversation) => conversation.id === selectedId);
-    return existing ? { ...existing, messages } : undefined;
-  }, [selectedId, conversations, matches, getConversationMessages]);
+    return existing ? { ...existing, messages: safeConversationMessages } : undefined;
+  }, [selectedId, conversations, matches, safeConversationMessages]);
 
   const selectedMatch = matches.find((match) => match.id === selectedConversation?.relatedId);
   const selectedApplicant = selectedMatch?.applicants.find((applicant) => applicant.uid === user?.uid);

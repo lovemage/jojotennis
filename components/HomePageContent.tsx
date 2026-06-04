@@ -86,6 +86,9 @@ export default function HomePageContent() {
               <p className="mt-2 text-sm text-muted">
                 {match.date} {match.startTime} · {match.venue}
               </p>
+              <p className="mt-1 text-sm font-bold text-pine">
+                已邀 {Math.min(match.filledSlots, match.totalSlots)} 人（總共 {match.totalSlots} 人）・還差 {Math.max(match.totalSlots - match.filledSlots, 0)} 人
+              </p>
             </Link>
           ))}
         </div>
