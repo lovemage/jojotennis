@@ -579,6 +579,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (left.length !== right.length) return false;
         return left.every((item, index) => {
           const next = right[index];
+          const itemReadBy = item.readBy ?? [];
+          const nextReadBy = next.readBy ?? [];
           return (
             item.id === next.id &&
             item.senderUid === next.senderUid &&
@@ -587,9 +589,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             item.timestamp === next.timestamp &&
             item.type === next.type &&
             Array.isArray(item.readBy) &&
-            Array.isArray(next.readBy) &&
-            item.readBy.length === next.readBy.length &&
-            item.readBy.every((uid, readIndex) => uid === next.readBy[readIndex])
+            itemReadBy.length === nextReadBy.length &&
+            itemReadBy.every((uid, readIndex) => uid === nextReadBy[readIndex])
           );
         });
       };
