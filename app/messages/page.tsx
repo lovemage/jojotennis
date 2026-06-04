@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
-import type { ChatMessage, Conversation } from "@/context/AppContext";
+import type { ChatMessage, Conversation, Match } from "@/context/AppContext";
 import {
   getChatServiceUnavailableMessage,
   isChatServiceUnavailable,
@@ -56,6 +56,7 @@ function MessagesPageContent() {
     matchId: string;
     applicantUid: string;
   } | null>(null);
+  const [reviewApplicant, setReviewApplicant] = useState<Match["applicants"][number] | null>(null);
 
   const safeConversationMessages = useMemo<ChatMessage[]>(() => {
     const source = getConversationMessages(selectedId);
@@ -275,45 +276,35 @@ function MessagesPageContent() {
                                 applicant.status === "pending" ? "bg-amber-100 text-amber-900" : "bg-parchment"
                               }`}
                             >
-                              <span>{applicant.nickname}</span>
+                              {applicant.status === "pending" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setReviewApplicant(applicant)}
+                                  className="font-bold text-pine underline decoration-amber-400 underline-offset-2"
+                                >
+                                  {applicant.nickname}
+                                </button>
+                              ) : (
+                                <span>{applicant.nickname}</span>
+                              )}
                               <span>· {applicant.status === "pending" ? "待核准" : "已加入"}</span>
                               {applicant.uid ? <UserStatsBadge uid={applicant.uid} /> : null}
                             </span>
                           ))}
                       </div>
                       {pendingApplicants.length > 0 ? (
-                        <div className="space-y-2 rounded-2xl bg-amber-50 p-3 text-xs text-amber-950">
-                          <p className="font-bold">待核准球友</p>
-                          {pendingApplicants.map((applicant) => (
-                            <div key={applicant.uid} className="flex items-center justify-between gap-2">
-                              <span className="min-w-0 truncate font-bold">{applicant.nickname}</span>
-                              <div className="flex shrink-0 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void Promise.resolve(respondToApplicant(selectedMatch.id, applicant.uid, true)).catch(reportApproveError);
-                                  }}
-                                  className="rounded-full bg-pine px-3 py-1 font-bold text-white"
-                                >
-                                  同意
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void Promise.resolve(respondToApplicant(selectedMatch.id, applicant.uid, false)).catch(reportApproveError);
-                                  }}
-                                  className="rounded-full border border-amber-300 px-3 py-1 font-bold text-amber-900"
-                                >
-                                  婉拒
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                        <div className="rounded-2xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">
+                          點擊待核准會員暱稱查看資料並處理申請。
                         </div>
                       ) : null}
                     </div>
                   ) : null}
                 </div>
+                {isMatchHost ? (
+                  <span className="shrink-0 rounded-full bg-pine px-3 py-1.5 text-xs font-bold text-white">
+                    我是主揪
+                  </span>
+                ) : null}
               </header>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -443,6 +434,59 @@ function MessagesPageContent() {
                 className="rounded-full bg-clay px-4 py-3 text-sm font-bold text-white"
               >
                 確認撤回
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {reviewApplicant && selectedMatch ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center bg-ink/50 p-4"
+          onClick={() => setReviewApplicant(null)}
+        >
+          <div
+            className="mx-auto w-full max-w-sm rounded-[1.5rem] bg-white p-5 shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-muted">會員資料</p>
+                <h2 className="mt-1 truncate text-2xl font-bold text-pine">{reviewApplicant.nickname}</h2>
+              </div>
+              <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">
+                待核准
+              </span>
+            </div>
+            <div className="mt-4 rounded-2xl bg-ivory p-4 text-sm leading-6 text-muted">
+              <p className="font-bold text-ink">{reviewApplicant.nickname} 想加入這場球局。</p>
+              {reviewApplicant.uid ? (
+                <div className="mt-3">
+                  <UserStatsBadge uid={reviewApplicant.uid} />
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  void Promise.resolve(respondToApplicant(selectedMatch.id, reviewApplicant.uid, true))
+                    .then(() => setReviewApplicant(null))
+                    .catch(reportApproveError);
+                }}
+                className="rounded-full bg-pine px-4 py-3 text-sm font-bold text-white"
+              >
+                同意加入
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void Promise.resolve(respondToApplicant(selectedMatch.id, reviewApplicant.uid, false))
+                    .then(() => setReviewApplicant(null))
+                    .catch(reportApproveError);
+                }}
+                className="rounded-full border border-amber-300 px-4 py-3 text-sm font-bold text-amber-900"
+              >
+                殘忍拒絕
               </button>
             </div>
           </div>
