@@ -1,6 +1,13 @@
 import { auth } from "./firebase";
 import type { Conversation, Message } from "./schema";
 
+const MESSAGE_POLL_MS = 5000;
+const MESSAGE_HIDDEN_POLL_MS = 60000;
+const CONVERSATION_POLL_MS = 30000;
+const ADMIN_CONVERSATION_POLL_MS = 60000;
+const CONVERSATION_HIDDEN_POLL_MS = 120000;
+const MAX_ERROR_BACKOFF_MS = 300000;
+
 async function getAuthHeader() {
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new Error("需要登入");
@@ -29,6 +36,64 @@ async function fetchChatMessages(convId: string): Promise<Message[]> {
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "讀取訊息失敗");
   const data = (await response.json()) as { messages?: Message[] };
   return data.messages ?? [];
+}
+
+function subscribeWithPolling(
+  load: () => Promise<void>,
+  options: {
+    intervalMs: number;
+    hiddenIntervalMs?: number;
+    onError?: (error: unknown) => void;
+  },
+) {
+  let stopped = false;
+  let timer: number | undefined;
+  let errorCount = 0;
+
+  const nextDelay = () => {
+    const baseDelay = document.hidden
+      ? options.hiddenIntervalMs ?? Math.max(options.intervalMs, MESSAGE_HIDDEN_POLL_MS)
+      : options.intervalMs;
+    if (errorCount === 0) return baseDelay;
+    return Math.min(MAX_ERROR_BACKOFF_MS, baseDelay * 2 ** Math.min(errorCount, 5));
+  };
+
+  const schedule = (delay = nextDelay()) => {
+    if (stopped) return;
+    timer = window.setTimeout(() => void run(), delay);
+  };
+
+  async function run() {
+    if (stopped) return;
+    try {
+      await load();
+      errorCount = 0;
+    } catch (error) {
+      errorCount += 1;
+      options.onError?.(error);
+    } finally {
+      schedule();
+    }
+  }
+
+  const handleVisibilityChange = () => {
+    if (stopped) return;
+    if (timer) window.clearTimeout(timer);
+    if (document.hidden) {
+      schedule(nextDelay());
+    } else {
+      void run();
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  void run();
+
+  return () => {
+    stopped = true;
+    if (timer) window.clearTimeout(timer);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
 }
 
 export async function getOrCreateDirectConversation(
@@ -148,20 +213,21 @@ export async function sendSystemMessage(convId: string, content: string): Promis
 export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) => {
   let stopped = false;
 
-  async function load() {
-    try {
+  const unsubscribe = subscribeWithPolling(
+    async () => {
       const messages = await fetchChatMessages(convId);
       if (!stopped) cb(messages);
-    } catch (err) {
-      console.error("[messages] 讀取失敗：", err);
-    }
-  }
+    },
+    {
+      intervalMs: MESSAGE_POLL_MS,
+      hiddenIntervalMs: MESSAGE_HIDDEN_POLL_MS,
+      onError: (err) => console.error("[messages] 讀取失敗：", err),
+    },
+  );
 
-  void load();
-  const timer = window.setInterval(() => void load(), 3000);
   return () => {
     stopped = true;
-    window.clearInterval(timer);
+    unsubscribe();
   };
 };
 
@@ -169,43 +235,43 @@ export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) =>
 {
   let stopped = false;
 
-  async function load() {
-    try {
+  const unsubscribe = subscribeWithPolling(
+    async () => {
       const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations");
       if (!stopped) cb(data.conversations ?? []);
-    } catch (err) {
-      console.error("[conversations] 讀取失敗：", err);
-      if (!stopped) cb([]);
-    }
-  }
+    },
+    {
+      intervalMs: CONVERSATION_POLL_MS,
+      hiddenIntervalMs: CONVERSATION_HIDDEN_POLL_MS,
+      onError: (err) => console.error("[conversations] 讀取失敗：", err),
+    },
+  );
 
   void uid;
-  void load();
-  const timer = window.setInterval(() => void load(), 3000);
   return () => {
     stopped = true;
-    window.clearInterval(timer);
+    unsubscribe();
   };
 };
 
 export const subscribeToAllConversations = (cb: (c: Conversation[]) => void) => {
   let stopped = false;
 
-  async function load() {
-    try {
+  const unsubscribe = subscribeWithPolling(
+    async () => {
       const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations?admin=1");
       if (!stopped) cb(data.conversations ?? []);
-    } catch (err) {
-      console.error("[conversations] 管理列表讀取失敗：", err);
-      if (!stopped) cb([]);
-    }
-  }
+    },
+    {
+      intervalMs: ADMIN_CONVERSATION_POLL_MS,
+      hiddenIntervalMs: CONVERSATION_HIDDEN_POLL_MS,
+      onError: (err) => console.error("[conversations] 管理列表讀取失敗：", err),
+    },
+  );
 
-  void load();
-  const timer = window.setInterval(() => void load(), 3000);
   return () => {
     stopped = true;
-    window.clearInterval(timer);
+    unsubscribe();
   };
 };
 
