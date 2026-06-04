@@ -1,13 +1,19 @@
 import { auth } from "./firebase";
 import type { Conversation, Message } from "./schema";
 
-const MESSAGE_POLL_MS = 5000;
+const MESSAGE_POLL_MS = 8000;
 const MESSAGE_HIDDEN_POLL_MS = 60000;
 const MESSAGE_FETCH_LIMIT = 30;
+const MESSAGE_RATE_LIMIT_BACKOFF_MS = 120000;
 const CONVERSATION_POLL_MS = 30000;
 const ADMIN_CONVERSATION_POLL_MS = 60000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
 const MAX_ERROR_BACKOFF_MS = 300000;
+
+function isRateLimitError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.includes("max requests limit exceeded");
+}
 
 async function getAuthHeader() {
   const token = await auth.currentUser?.getIdToken();
@@ -53,9 +59,16 @@ function subscribeWithPolling(
   let stopped = false;
   let timer: number | undefined;
   let errorCount = 0;
+  let rateLimitUntil = 0;
 
   const nextDelay = () => {
-    const baseDelay = document.hidden
+    const now = Date.now();
+    if (rateLimitUntil > now) {
+      return Math.max(1000, rateLimitUntil - now);
+    }
+    const inactive = document.hidden || !document.hasFocus?.();
+
+    const baseDelay = inactive
       ? options.hiddenIntervalMs ?? Math.max(options.intervalMs, MESSAGE_HIDDEN_POLL_MS)
       : options.intervalMs;
     if (errorCount === 0) return baseDelay;
@@ -71,9 +84,17 @@ function subscribeWithPolling(
     if (stopped) return;
     try {
       await load();
+      if (rateLimitUntil > Date.now()) {
+        rateLimitUntil = 0;
+      }
       errorCount = 0;
     } catch (error) {
-      errorCount += 1;
+      if (isRateLimitError(error)) {
+        rateLimitUntil = Date.now() + MESSAGE_RATE_LIMIT_BACKOFF_MS;
+        errorCount = Math.max(errorCount, 1);
+      } else {
+        errorCount += 1;
+      }
       options.onError?.(error);
     } finally {
       schedule();
