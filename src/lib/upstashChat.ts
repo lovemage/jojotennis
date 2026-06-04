@@ -22,6 +22,8 @@ export type RedisConversation = {
 
 const DEFAULT_TTL_DAYS = 7;
 const MAX_MESSAGES_PER_CONVERSATION = 500;
+const MAX_CONVERSATION_KEYS = 200;
+const CONVERSATION_FETCH_CHUNK = 100;
 
 let redisClient: Redis | null = null;
 
@@ -91,6 +93,33 @@ export async function listRedisChatMessages(
       }
     })
     .filter((message): message is RedisChatMessage => Boolean(message));
+}
+
+async function listRedisConversationsByIds(ids: string[]): Promise<RedisConversation[]> {
+  if (!ids.length) return [];
+
+  const redis = getRedis();
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  const limitedIds = uniqueIds.slice(0, MAX_CONVERSATION_KEYS);
+  const rows: unknown[] = [];
+
+  for (let i = 0; i < limitedIds.length; i += CONVERSATION_FETCH_CHUNK) {
+    const batchIds = limitedIds.slice(i, i + CONVERSATION_FETCH_CHUNK);
+    if (batchIds.length === 0) continue;
+    const values = await redis.mget(...batchIds.map((id) => conversationKey(id)));
+    rows.push(...values);
+  }
+
+  return rows
+    .map((row) => {
+      if (!row) return null;
+      try {
+        return typeof row === "string" ? (JSON.parse(row) as RedisConversation) : (row as RedisConversation);
+      } catch {
+        return null;
+      }
+    })
+    .filter((conversation): conversation is RedisConversation => Boolean(conversation));
 }
 
 async function writeConversation(redis: Redis, conversation: RedisConversation) {
@@ -167,7 +196,7 @@ export async function removeRedisConversationParticipant(conversationId: string,
 export async function listRedisConversationsForUser(uid: string): Promise<RedisConversation[]> {
   const redis = getRedis();
   const ids = await redis.smembers<string[]>(userConversationsKey(uid));
-  const conversations = await Promise.all(ids.map((id) => getRedisConversation(id)));
+  const conversations = await listRedisConversationsByIds(ids);
   return conversations
     .filter((conversation): conversation is RedisConversation => Boolean(conversation))
     .sort((a, b) => (b.lastMessageTime ?? b.updatedAt) - (a.lastMessageTime ?? a.updatedAt));
@@ -176,7 +205,7 @@ export async function listRedisConversationsForUser(uid: string): Promise<RedisC
 export async function listAllRedisConversations(): Promise<RedisConversation[]> {
   const redis = getRedis();
   const ids = await redis.smembers<string[]>(allConversationsKey());
-  const conversations = await Promise.all(ids.map((id) => getRedisConversation(id)));
+  const conversations = await listRedisConversationsByIds(ids);
   return conversations
     .filter((conversation): conversation is RedisConversation => Boolean(conversation))
     .sort((a, b) => (b.lastMessageTime ?? b.updatedAt) - (a.lastMessageTime ?? a.updatedAt));

@@ -5,14 +5,18 @@ const MESSAGE_POLL_MS = 8000;
 const MESSAGE_HIDDEN_POLL_MS = 60000;
 const MESSAGE_FETCH_LIMIT = 30;
 const MESSAGE_RATE_LIMIT_BACKOFF_MS = 120000;
-const CONVERSATION_POLL_MS = 30000;
-const ADMIN_CONVERSATION_POLL_MS = 60000;
+const CONVERSATION_POLL_MS = 120000;
+const ADMIN_CONVERSATION_POLL_MS = 120000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
 const MAX_ERROR_BACKOFF_MS = 300000;
 
 function isRateLimitError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return message.includes("max requests limit exceeded");
+  return (
+    message.includes("max requests limit exceeded") ||
+    message.includes("HTTP 429") ||
+    message.includes("Too Many Requests")
+  );
 }
 
 async function getAuthHeader() {
@@ -30,8 +34,19 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "聊天室 API 失敗");
+  const responseText = await response.text();
+  const payload = (() => {
+    try {
+      return responseText ? (JSON.parse(responseText) as { error?: string }) : {};
+    } catch {
+      return {};
+    }
+  })() as T & { error?: string };
+  if (!response.ok) {
+    throw new Error(
+      `聊天室 API 失敗 (HTTP ${response.status}): ${payload.error || responseText || "request failed"}`,
+    );
+  }
   return payload;
 }
 

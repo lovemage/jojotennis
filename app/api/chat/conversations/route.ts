@@ -63,10 +63,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const conversations = admin
-    ? await listAllRedisConversations()
-    : await listRedisConversationsForUser(auth.uid);
-  return NextResponse.json({ conversations });
+  try {
+    const conversations = admin
+      ? await listAllRedisConversations()
+      : await listRedisConversationsForUser(auth.uid);
+    return NextResponse.json({ conversations });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("max requests limit exceeded")) {
+      console.error("[chat/conversations] Upstash rate limit:", message);
+      return NextResponse.json({ error: message }, { status: 429 });
+    }
+    console.error("[chat/conversations] 讀取失敗:", message);
+    return NextResponse.json({ error: "聊天室會話清單讀取失敗" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
