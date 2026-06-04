@@ -11,6 +11,10 @@ import {
 
 export const runtime = "nodejs";
 
+function isAblyChatMode() {
+  return (process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably") === "ably";
+}
+
 async function verifyCaller(request: Request, expectedUid: string) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -38,6 +42,10 @@ export async function POST(request: Request) {
   const auth = await verifyCaller(request, body.senderUid);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  if (isAblyChatMode()) {
+    return NextResponse.json({ skipped: "ably chat mode" });
   }
 
   const conv = await getRedisConversation(body.convId);

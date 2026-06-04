@@ -6,6 +6,10 @@ import { deleteRedisConversation } from "@/lib/upstashChat";
 
 export const runtime = "nodejs";
 
+function isAblyChatMode() {
+  return (process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably") === "ably";
+}
+
 type MatchRow = {
   id: string;
   title: string;
@@ -193,8 +197,10 @@ export async function DELETE(request: Request) {
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await deleteRedisConversation(`match_${matchId}`).catch((error) => {
-    console.warn("[admin/matches] failed to delete Redis conversation:", error);
-  });
+  if (!isAblyChatMode()) {
+    await deleteRedisConversation(`match_${matchId}`).catch((error) => {
+      console.warn("[admin/matches] failed to delete Redis conversation:", error);
+    });
+  }
   return NextResponse.json({ ok: true });
 }

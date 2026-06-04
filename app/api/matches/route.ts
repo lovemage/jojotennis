@@ -14,6 +14,10 @@ import type { MatchJoinMode } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
+function isAblyChatMode() {
+  return (process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably") === "ably";
+}
+
 type MatchStatus = "open" | "closed" | "cancelled";
 type AppStatus = "pending" | "accepted" | "declined" | "removed";
 
@@ -138,6 +142,7 @@ function generateJoinCode(): string {
 }
 
 async function addSystemMessage(conversationId: string, content: string) {
+  if (isAblyChatMode()) return;
   try {
     await appendRedisChatMessage(conversationId, {
       msgId: `sys-${Date.now()}-${crypto.randomUUID()}`,
@@ -152,6 +157,27 @@ async function addSystemMessage(conversationId: string, content: string) {
   } catch (error) {
     console.warn("[matches] system message skipped:", error);
   }
+}
+
+async function addChatParticipant(conversationId: string, uid: string) {
+  if (isAblyChatMode()) return;
+  await addRedisConversationParticipant(conversationId, uid).catch((error) =>
+    console.warn("[matches] add chat participant skipped:", error),
+  );
+}
+
+async function removeChatParticipant(conversationId: string, uid: string) {
+  if (isAblyChatMode()) return;
+  await removeRedisConversationParticipant(conversationId, uid).catch((error) =>
+    console.warn("[matches] remove chat participant skipped:", error),
+  );
+}
+
+async function deleteChatConversation(conversationId: string) {
+  if (isAblyChatMode()) return;
+  await deleteRedisConversation(conversationId).catch((error) =>
+    console.warn("[matches] delete chat conversation skipped:", error),
+  );
 }
 
 async function getMatch(matchId: string) {
@@ -218,7 +244,7 @@ async function joinAccepted(match: MatchRow, uid: string, nickname: string) {
   const result = (data ?? {}) as MatchJoinResult;
   if (!result.ok) return { ok: false, msg: result.msg ?? "加入球局失敗" };
 
-  await addRedisConversationParticipant(`match_${match.id}`, uid);
+  await addChatParticipant(`match_${match.id}`, uid);
   await addSystemMessage(`match_${match.id}`, `${nickname} 已加入球局！`);
   if (result.isFull) {
     await addSystemMessage(`match_${match.id}`, `「${match.title}」招募完成！祝大家打球愉快`);
@@ -316,14 +342,16 @@ export async function POST(request: Request) {
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await upsertRedisConversation({
-    convId: `match_${data.id}`,
-    type: "match",
-    relatedId: data.id,
-    participants: [auth.uid],
-    name: data.title,
-    ownerUid: auth.uid,
-  }).catch((error) => console.warn("[matches] conversation metadata unavailable:", error));
+  if (!isAblyChatMode()) {
+    await upsertRedisConversation({
+      convId: `match_${data.id}`,
+      type: "match",
+      relatedId: data.id,
+      participants: [auth.uid],
+      name: data.title,
+      ownerUid: auth.uid,
+    }).catch((error) => console.warn("[matches] conversation metadata unavailable:", error));
+  }
 
   return NextResponse.json({ id: data.id });
 }
@@ -437,7 +465,7 @@ export async function PATCH(request: Request) {
         if (error) throw new Error(error.message);
         const result = (data ?? {}) as MatchJoinResult;
         if (!result.ok) return NextResponse.json({ ok: false, msg: result.msg ?? "已達人數上限" });
-        await addRedisConversationParticipant(`match_${match.id}`, app.applicant_uid);
+        await addChatParticipant(`match_${match.id}`, app.applicant_uid);
       } else {
         const { error } = await supabase
           .from("match_applications")
@@ -466,7 +494,7 @@ export async function PATCH(request: Request) {
         .eq("id", app.id);
       if (error) throw new Error(error.message);
       await recalculateMatchFill(match.id);
-      await removeRedisConversationParticipant(`match_${match.id}`, app.applicant_uid);
+      await removeChatParticipant(`match_${match.id}`, app.applicant_uid);
       return NextResponse.json({ ok: true });
     }
 
@@ -481,7 +509,7 @@ export async function PATCH(request: Request) {
         .eq("id", app.id);
       if (error) throw new Error(error.message);
       await recalculateMatchFill(match.id);
-      await removeRedisConversationParticipant(`match_${match.id}`, auth.uid);
+      await removeChatParticipant(`match_${match.id}`, auth.uid);
       await addSystemMessage(`match_${match.id}`, `${app.applicant_nickname} 已退出球局。`);
       return NextResponse.json({ ok: true });
     }
@@ -536,9 +564,7 @@ export async function PATCH(request: Request) {
         .eq("match_id", match.id)
         .eq("is_deleted", false);
       if (appsError) throw new Error(appsError.message);
-      await deleteRedisConversation(`match_${match.id}`).catch((error) =>
-        console.warn("[matches] failed to delete match conversation:", error),
-      );
+      await deleteChatConversation(`match_${match.id}`);
       return NextResponse.json({ ok: true });
     }
 

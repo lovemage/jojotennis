@@ -10,6 +10,10 @@ import {
 
 export const runtime = "nodejs";
 
+function isAblyChatMode() {
+  return (process.env.NEXT_PUBLIC_CHAT_REALTIME_PROVIDER ?? "ably") === "ably";
+}
+
 type ConversationDoc = {
   type?: "direct" | "match" | "club";
   participants?: string[];
@@ -89,8 +93,10 @@ async function resolveConversation(convId: string) {
     };
   }
 
-  const redisConversation = await getRedisConversation(convId);
-  if (redisConversation) return redisConversation as ConversationDoc;
+  if (!isAblyChatMode()) {
+    const redisConversation = await getRedisConversation(convId);
+    if (redisConversation) return redisConversation as ConversationDoc;
+  }
 
   return null;
 }
@@ -124,13 +130,17 @@ export async function GET(request: Request) {
       : canReadConversation(conv, auth.uid);
   if (!canRead) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  try {
-    const messages = await listRedisChatMessages(convId, limit);
-    return NextResponse.json({ messages });
-  } catch (error) {
-    console.warn("[chat/messages] cache unavailable:", error instanceof Error ? error.message : error);
-    return NextResponse.json({ messages: [] });
+  if (!isAblyChatMode()) {
+    try {
+      const messages = await listRedisChatMessages(convId, limit);
+      return NextResponse.json({ messages });
+    } catch (error) {
+      console.warn("[chat/messages] cache unavailable:", error instanceof Error ? error.message : error);
+    }
   }
+
+  void limit;
+  return NextResponse.json({ messages: [] });
 }
 
 export async function POST(request: Request) {
@@ -172,17 +182,18 @@ export async function POST(request: Request) {
     createdAt: Date.now(),
   };
 
-  try {
-    await appendRedisChatMessage(convId, message);
-    await updateRedisConversationAfterMessage(
-      convId,
-      isSystem ? "system" : auth.uid,
-      isSystem ? body.senderNickname || "揪揪網球" : body.senderNickname || "球友",
-      content,
-    );
-
-  } catch (error) {
-    console.warn("[chat/messages] cache write skipped:", error instanceof Error ? error.message : error);
+  if (!isAblyChatMode()) {
+    try {
+      await appendRedisChatMessage(convId, message);
+      await updateRedisConversationAfterMessage(
+        convId,
+        isSystem ? "system" : auth.uid,
+        isSystem ? body.senderNickname || "揪揪網球" : body.senderNickname || "球友",
+        content,
+      );
+    } catch (error) {
+      console.warn("[chat/messages] cache write skipped:", error instanceof Error ? error.message : error);
+    }
   }
 
   return NextResponse.json({ message });

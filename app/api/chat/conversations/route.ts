@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (isAblyChatMode() && !admin) {
+  if (isAblyChatMode()) {
     return NextResponse.json({ conversations: [] });
   }
 
