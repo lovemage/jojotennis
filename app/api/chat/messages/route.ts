@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
-import { appendRedisChatMessage, listRedisChatMessages } from "@/lib/upstashChat";
+import {
+  appendRedisChatMessage,
+  getRedisConversation,
+  listRedisChatMessages,
+  updateRedisConversationAfterMessage,
+} from "@/lib/upstashChat";
 
 export const runtime = "nodejs";
 
@@ -141,15 +146,9 @@ async function canReadMatchConversation(matchId: string, uid: string, idToken: s
   }
 }
 
-async function resolveConversation(convId: string, idToken: string) {
-  try {
-    const firestore = getAdminFirestore();
-    const snap = await firestore.collection("conversations").doc(convId).get();
-    if (snap.exists) return snap.data() as ConversationDoc;
-  } catch {
-    const conv = await fetchFirestoreDoc<ConversationDoc>("conversations", convId, idToken).catch(() => null);
-    if (conv) return conv;
-  }
+async function resolveConversation(convId: string) {
+  const redisConversation = await getRedisConversation(convId);
+  if (redisConversation) return redisConversation as ConversationDoc;
 
   if (convId.startsWith("match_")) {
     return {
@@ -178,7 +177,7 @@ export async function GET(request: Request) {
   const convId = url.searchParams.get("conversationId")?.trim();
   if (!convId) return NextResponse.json({ error: "Missing conversationId" }, { status: 400 });
 
-  const conv = await resolveConversation(convId, auth.token);
+  const conv = await resolveConversation(convId);
   if (!conv) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
 
   const matchId = conv.type === "match" ? conv.relatedId ?? convId.replace(/^match_/, "") : "";
@@ -213,7 +212,7 @@ export async function POST(request: Request) {
   if (!convId || !content) return NextResponse.json({ error: "Missing conversationId or content" }, { status: 400 });
   if (content.length > 500) return NextResponse.json({ error: "訊息不可超過 500 字" }, { status: 400 });
 
-  const conv = await resolveConversation(convId, auth.token);
+  const conv = await resolveConversation(convId);
   if (!conv) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   const matchId = conv.type === "match" ? conv.relatedId ?? convId.replace(/^match_/, "") : "";
   const canSend =
@@ -235,6 +234,12 @@ export async function POST(request: Request) {
       readBy: isSystem ? [] : [auth.uid],
       createdAt: Date.now(),
     });
+    await updateRedisConversationAfterMessage(
+      convId,
+      isSystem ? "system" : auth.uid,
+      isSystem ? body.senderNickname || "揪揪網球" : body.senderNickname || "球友",
+      content,
+    );
 
     return NextResponse.json({ message });
   } catch (error) {

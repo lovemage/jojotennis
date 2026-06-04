@@ -1147,8 +1147,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!isAdmin) return;
       if (USE_FIREBASE) {
         void adminSoftDeleteMatch(matchId);
+        const conversationId = `match_${matchId}`;
+        void deleteConversationById(conversationId);
+        setConvMeta((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+        messageUnsubs.current[conversationId]?.();
+        delete messageUnsubs.current[conversationId];
       } else {
         setMatches((prev) => prev.filter((m) => m.id !== matchId));
+        setConversations((prev) => prev.filter((c) => c.id !== `match_${matchId}`));
       }
     },
     [isAdmin],

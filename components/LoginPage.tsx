@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { useApp } from "@/context/AppContext";
@@ -42,6 +42,7 @@ export default function LoginPage() {
   const [requiresEmail, setRequiresEmail] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   const nextPath = searchParams.get("next") || "/";
   const socialProvider = useMemo(
@@ -63,6 +64,14 @@ export default function LoginPage() {
     if (callbackError) setError(callbackError);
   }, [searchParams]);
 
+  const completeLoginRedirect = useCallback((path = nextPath) => {
+    setSuccessName("登入完成，正在前往首頁。");
+    setRedirecting(true);
+    window.setTimeout(() => {
+      router.replace(path);
+    }, 800);
+  }, [nextPath, router]);
+
   useEffect(() => {
     const token = searchParams.get("lineToken");
     if (!token) return;
@@ -74,10 +83,10 @@ export default function LoginPage() {
           setRequiresEmail(true);
           return;
         }
-        router.push(nextPath);
+        completeLoginRedirect();
       })
       .catch((err) => setError(err instanceof Error ? err.message : "LINE 登入失敗"));
-  }, [nextPath, refreshUser, router, searchParams]);
+  }, [completeLoginRedirect, refreshUser, searchParams]);
 
   useEffect(() => {
     if (!fbUser || !user) return;
@@ -107,7 +116,7 @@ export default function LoginPage() {
         setError("Email 或密碼錯誤，請確認後再試。");
         return;
       }
-      router.push(nextPath);
+      completeLoginRedirect();
       return;
     }
 
@@ -148,7 +157,7 @@ export default function LoginPage() {
       setRequiresEmail(true);
       return;
     }
-    router.push(nextPath);
+    completeLoginRedirect();
   }
 
   async function submitSocialEmail(event: React.FormEvent<HTMLFormElement>) {
@@ -291,8 +300,8 @@ export default function LoginPage() {
             {error ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">{error}</p> : null}
             {successName ? <p className="rounded-2xl bg-ivory p-4 text-sm font-bold text-pine">{successName}</p> : null}
 
-            <button type="submit" className="w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white">
-              {tab === "login" ? "登入" : "建立帳號"}
+            <button type="submit" disabled={redirecting} className="w-full rounded-full bg-clay px-5 py-3 text-sm font-bold text-white disabled:opacity-60">
+              {redirecting ? "登入完成" : tab === "login" ? "登入" : "建立帳號"}
             </button>
 
             <div className="flex items-center gap-3 text-xs text-muted">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emailClient";
 import TemplatedEmail from "@/emails/TemplatedEmail";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
-import { listRedisChatMessages } from "@/lib/upstashChat";
+import { getRedisConversation, listRedisChatMessages } from "@/lib/upstashChat";
 import { notifyUser } from "@/lib/notificationTriggers";
 import {
   EMAIL_TEMPLATE_DEFAULTS,
@@ -13,7 +13,6 @@ export const runtime = "nodejs";
 
 type UserDoc = { nickname?: string; email?: string };
 type CoachDoc = { uid?: string; isDeleted?: boolean; nickname?: string };
-type ConversationDoc = { type?: string; participants?: string[] };
 
 async function verifyCaller(request: Request, expectedUid: string) {
   const header = request.headers.get("authorization") || "";
@@ -46,11 +45,10 @@ export async function POST(request: Request) {
 
   const firestore = getAdminFirestore();
 
-  const convSnap = await firestore.collection("conversations").doc(body.convId).get();
-  if (!convSnap.exists) {
+  const conv = await getRedisConversation(body.convId);
+  if (!conv) {
     return NextResponse.json({ skipped: "conversation not found" });
   }
-  const conv = convSnap.data() as ConversationDoc;
   if (conv.type !== "direct" || !Array.isArray(conv.participants) || conv.participants.length !== 2) {
     return NextResponse.json({ skipped: "not direct two-party conversation" });
   }

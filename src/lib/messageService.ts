@@ -1,26 +1,24 @@
-import { auth, db } from "./firebase";
-import {
-  collection,
-  doc,
-  updateDoc,
-  setDoc,
-  getDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove,
-  deleteDoc,
-  increment,
-} from "firebase/firestore";
+import { auth } from "./firebase";
 import type { Conversation, Message } from "./schema";
 
 async function getAuthHeader() {
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new Error("需要登入");
   return { Authorization: `Bearer ${token}` };
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = await getAuthHeader();
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...headers,
+      ...(init?.headers ?? {}),
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error || "聊天室 API 失敗");
+  return payload;
 }
 
 async function fetchChatMessages(convId: string): Promise<Message[]> {
@@ -41,18 +39,12 @@ export async function getOrCreateDirectConversation(
   const resolvedAUid = userAUid ?? auth.currentUser?.uid;
   if (!resolvedAUid) throw new Error("需要登入");
   const convId = [resolvedAUid, userBUid].sort().join("_");
-  const ref = doc(db, "conversations", convId);
-  if (!(await getDoc(ref)).exists()) {
-    await setDoc(ref, {
-      convId,
-      type: "direct",
-      participants: [resolvedAUid, userBUid],
-      name: userBNickname,
-      lastMessage: "",
-      lastSenderNickname: "",
-      updatedAt: serverTimestamp(),
-    });
-  }
+  await upsertConversationSnapshot({
+    id: convId,
+    type: "direct",
+    participants: [resolvedAUid, userBUid],
+    name: userBNickname,
+  });
   return convId;
 }
 
@@ -61,15 +53,12 @@ export async function createMatchConversation(
   matchTitle: string,
   ownerUid: string,
 ): Promise<void> {
-  await setDoc(doc(db, "conversations", `match_${matchId}`), {
-    convId: `match_${matchId}`,
+  await upsertConversationSnapshot({
+    id: `match_${matchId}`,
     type: "match",
     relatedId: matchId,
     participants: [ownerUid],
     name: matchTitle,
-    lastMessage: "",
-    lastSenderNickname: "",
-    updatedAt: serverTimestamp(),
   });
 }
 
@@ -78,23 +67,28 @@ export async function createClubConversation(
   clubName: string,
   ownerUid: string,
 ): Promise<void> {
-  await setDoc(doc(db, "conversations", `club_${clubId}`), {
-    convId: `club_${clubId}`,
+  await upsertConversationSnapshot({
+    id: `club_${clubId}`,
     type: "club",
     relatedId: clubId,
     participants: [ownerUid],
     name: clubName,
-    lastMessage: "",
-    lastSenderNickname: "",
-    updatedAt: serverTimestamp(),
   });
 }
 
 export const addUserToConversation = (convId: string, uid: string) =>
-  updateDoc(doc(db, "conversations", convId), { participants: arrayUnion(uid) });
+  fetchJson<{ ok: boolean }>("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "addParticipant", convId, uid }),
+  }).then(() => undefined);
 
 export const removeUserFromConversation = (convId: string, uid: string) =>
-  updateDoc(doc(db, "conversations", convId), { participants: arrayRemove(uid) });
+  fetchJson<{ ok: boolean }>("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "removeParticipant", convId, uid }),
+  }).then(() => undefined);
 
 export async function sendMessage(
   convId: string,
@@ -124,21 +118,6 @@ export async function sendMessage(
   if (!response.ok) {
     throw new Error((await response.json().catch(() => null))?.error || "訊息送出失敗");
   }
-
-  const convRef = doc(db, "conversations", convId);
-  const convSnap = await getDoc(convRef);
-  const participants = (convSnap.data()?.participants as string[] | undefined) ?? [];
-  await updateDoc(convRef, {
-    lastMessage: t.slice(0, 50),
-    lastSenderNickname: senderNickname,
-    lastMessageTime: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    ...Object.fromEntries(
-      participants
-        .filter((uid) => uid && uid !== senderUid)
-        .map((uid) => [`unreadByUid.${uid}`, increment(1)]),
-    ),
-  }).catch(() => undefined);
 
   void (async () => {
     try {
@@ -187,21 +166,57 @@ export const subscribeToMessages = (convId: string, cb: (m: Message[]) => void) 
 };
 
 export const subscribeToConversations = (uid: string, cb: (c: Conversation[]) => void) =>
-  onSnapshot(
-    query(
-      collection(db, "conversations"),
-      where("participants", "array-contains", uid),
-      orderBy("updatedAt", "desc"),
-    ),
-    (snap) => cb(snap.docs.map((d) => ({ convId: d.id, ...d.data() } as Conversation))),
-    (err) => console.error("[conversations] 監聽失敗：", err.code, err.message),
-  );
+{
+  let stopped = false;
+
+  async function load() {
+    try {
+      const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations");
+      if (!stopped) cb(data.conversations ?? []);
+    } catch (err) {
+      console.error("[conversations] 讀取失敗：", err);
+      if (!stopped) cb([]);
+    }
+  }
+
+  void uid;
+  void load();
+  const timer = window.setInterval(() => void load(), 3000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+  };
+};
+
+export const subscribeToAllConversations = (cb: (c: Conversation[]) => void) => {
+  let stopped = false;
+
+  async function load() {
+    try {
+      const data = await fetchJson<{ conversations?: Conversation[] }>("/api/chat/conversations?admin=1");
+      if (!stopped) cb(data.conversations ?? []);
+    } catch (err) {
+      console.error("[conversations] 管理列表讀取失敗：", err);
+      if (!stopped) cb([]);
+    }
+  }
+
+  void load();
+  const timer = window.setInterval(() => void load(), 3000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+  };
+};
 
 /** 將聊天室中他人訊息標記為已讀 */
 export async function markConversationMessagesRead(convId: string, uid: string): Promise<void> {
-  await updateDoc(doc(db, "conversations", convId), {
-    [`unreadByUid.${uid}`]: 0,
-  }).catch(() => undefined);
+  void uid;
+  await fetchJson<{ ok: boolean }>("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "markRead", convId }),
+  }).then(() => undefined).catch(() => undefined);
 }
 
 export async function upsertConversationSnapshot(data: {
@@ -215,27 +230,27 @@ export async function upsertConversationSnapshot(data: {
   status?: string;
   ownerUid?: string;
 }): Promise<void> {
-  await setDoc(
-    doc(db, "conversations", data.id),
-    {
+  await fetchJson<{ conversation?: Conversation }>("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "upsert",
       convId: data.id,
       type: data.type,
       participants: data.participants,
       name: data.name,
       relatedId: data.relatedId,
-      lastMessage: data.lastMessage ?? "",
-      lastSenderNickname: "",
-      updatedAt: serverTimestamp(),
       unreadCount: data.unreadCount ?? 0,
       status: data.status,
       ownerUid: data.ownerUid,
-    },
-    { merge: true },
-  );
+    }),
+  }).then(() => undefined);
 }
 
 export async function deleteConversationById(conversationId: string): Promise<void> {
-  await deleteDoc(doc(db, "conversations", conversationId));
+  await fetchJson<{ ok: boolean }>(`/api/chat/conversations?conversationId=${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+  }).then(() => undefined);
 }
 
 export async function deleteConversationMessageById(

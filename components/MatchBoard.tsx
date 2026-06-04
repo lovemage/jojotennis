@@ -58,6 +58,26 @@ function canOpenMatchConversation(match: Match, uid?: string) {
   return match.applicants.some((applicant) => applicant.uid === uid && applicant.status === "accepted");
 }
 
+function isFirebaseQuotaError(message: string) {
+  return message.includes("Quota exceeded") || message.includes("resource-exhausted");
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function getMatchConversationBlockedMessage(match: Match, uid?: string) {
   const application = match.applicants.find((applicant) => applicant.uid === uid);
   if (application?.status === "pending") {
@@ -211,22 +231,26 @@ export default function MatchBoard() {
     setCreateError("");
     try {
       const title = draft.title || "新的揪球邀請";
-      const matchId = await addMatch({
-        title,
-        ownerUid: user.uid,
-        ownerNickname: user.nickname,
-        city: draft.city,
-        district: draft.district || "地區待確認",
-        venue: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
-        date: selectedDate || "日期待確認",
-        weekday: getWeekday(draft.date) || "週期待確認",
-        startTime,
-        endTime,
-        ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
-        totalSlots: parsePeople(draft.totalPlayers),
-        note: draft.notes,
-        joinMode: draft.joinMode,
-      });
+      const matchId = await withTimeout(
+        addMatch({
+          title,
+          ownerUid: user.uid,
+          ownerNickname: user.nickname,
+          city: draft.city,
+          district: draft.district || "地區待確認",
+          venue: draft.courtName || `${draft.city}${draft.district || ""}球場待確認`,
+          date: selectedDate || "日期待確認",
+          weekday: getWeekday(draft.date) || "週期待確認",
+          startTime,
+          endTime,
+          ntrpRequired: draft.ntrpLevels.includes("不限") ? ["不限"] : draft.ntrpLevels,
+          totalSlots: parsePeople(draft.totalPlayers),
+          note: draft.notes,
+          joinMode: draft.joinMode,
+        }),
+        15000,
+        "Firebase 配額已用完或連線逾時，暫時無法確認球局是否建立成功。請稍後重新整理確認。",
+      );
       const conversationId = getOrCreateConversation(user.uid, user.nickname, {
         type: "match",
         relatedId: matchId,
@@ -245,7 +269,12 @@ export default function MatchBoard() {
       closeSheet();
       router.push(`/messages?conversation=${conversationId || `match_${matchId}`}&from=match`);
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "建立球局失敗，請稍後再試");
+      const message = error instanceof Error ? error.message : "建立球局失敗，請稍後再試";
+      setCreateError(
+        isFirebaseQuotaError(message)
+          ? "Firebase 配額已用完，暫時無法建立球局。請稍後再試或升級/重置 Firestore 配額。"
+          : message,
+      );
     } finally {
       setCreateBusy(false);
     }

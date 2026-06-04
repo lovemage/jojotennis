@@ -7,7 +7,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { subscribeToConversations } from "@/lib/messageService";
+import { subscribeToAllConversations, subscribeToConversations } from "@/lib/messageService";
 import { subscribeToNews } from "@/lib/newsService";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
 import { toMillis, toUiUser } from "@/lib/mappers";
@@ -266,7 +266,7 @@ export function useFirebaseInboxListener(
   }, [enabled, userUid, setMessages]);
 }
 
-/** conversations metadata only; chat message bodies are loaded from Upstash Redis on the messages page. */
+/** Chat metadata and message bodies are loaded from Upstash Redis through chat APIs. */
 export function useFirebaseConversationListeners(
   enabled: boolean,
   userUid: string | undefined,
@@ -279,37 +279,25 @@ export function useFirebaseConversationListeners(
 
     let unsubConversations = () => {};
 
-    if (userUid) {
+    if (userUid && !isAdmin) {
       unsubConversations = subscribeToConversations(userUid, (items) => {
         const nextMeta: ConvMeta = {};
         for (const item of items) {
           nextMeta[item.convId] = { ...item };
         }
-        setConvMeta((prev) => ({ ...prev, ...nextMeta }));
+        setConvMeta(() => nextMeta);
       });
     }
 
     let adminUnsub = () => {};
     if (isAdmin && userUid) {
-      adminUnsub = safeSnapshot(
-        (onNext, onError) =>
-          onSnapshot(query(collection(db, "conversations"), orderBy("updatedAt", "desc")), (snap) => {
-            onNext(
-              snap.docs.map((docSnap) => {
-                const data = docSnap.data() as SchemaConversation;
-                return { id: docSnap.id, data: { ...data, convId: docSnap.id } };
-              }),
-            );
-          }, onError),
-        (rows) => {
-          const nextMeta: ConvMeta = {};
-          for (const row of rows) {
-            nextMeta[row.id] = row.data;
-          }
-          setConvMeta((prev) => ({ ...prev, ...nextMeta }));
-        },
-        [] as { id: string; data: SchemaConversation & { convId: string } }[],
-      );
+      adminUnsub = subscribeToAllConversations((items) => {
+        const nextMeta: ConvMeta = {};
+        for (const item of items) {
+          nextMeta[item.convId] = { ...item };
+        }
+        setConvMeta(() => nextMeta);
+      });
     }
 
     return () => {
