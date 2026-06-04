@@ -146,6 +146,7 @@ interface AppState {
   ) => string;
   sendChatMessage: (conversationId: string, content: string) => void;
   subscribeConversationMessages: (conversationId: string) => () => void;
+  getConversationMessages: (conversationId: string) => ChatMessage[];
   markConversationRead: (conversationId: string) => void;
   undoApplicantDecision: (matchId: string, applicantUid: string) => void;
   addStudentNeed: (
@@ -568,6 +569,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     },
     [],
+  );
+
+  const getConversationMessages = useCallback(
+    (conversationId: string) => convMessages[conversationId] ?? [],
+    [convMessages],
   );
 
   const sendChatMessage = useCallback(
@@ -1232,6 +1238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getOrCreateConversation,
     sendChatMessage,
     subscribeConversationMessages,
+    getConversationMessages,
     markConversationRead,
     undoApplicantDecision,
     addStudentNeed,

@@ -197,7 +197,7 @@ export default function HeaderStatus() {
         </Link>
         {user ? (
           <div ref={panelRef} className="relative flex items-center gap-2">
-            <Link href="/messages" aria-label="查看訊息" className="relative grid h-9 w-9 place-items-center rounded-full border border-pine/10 bg-white text-pine">
+            <Link href="/match" aria-label="查看揪球聊天室" className="relative grid h-9 w-9 place-items-center rounded-full border border-pine/10 bg-white text-pine">
               <BellIcon />
               {unreadCount > 0 ? (
                 <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-clay px-1 text-center text-[11px] font-bold leading-5 text-white">

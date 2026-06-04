@@ -1,20 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { Conversation } from "@/context/AppContext";
 import { sendMessage as sendFirestoreMessage } from "@/lib/messageService";
 import UserStatsBadge from "@/components/UserStatsBadge";
-
-type ConversationTab = "all" | "match" | "direct";
-
-const tabs: Array<{ id: ConversationTab; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "match", label: "揪球" },
-  { id: "direct", label: "私訊" },
-];
 
 function formatTime(value?: number) {
   if (!value) return "";
@@ -29,11 +21,6 @@ function conversationTitle(conversation: Pick<Conversation, "id" | "name" | "typ
   return conversation.name?.trim() || (conversation.type === "match" ? "揪球聊天室" : "未命名對話");
 }
 
-function conversationInitial(conversation: Pick<Conversation, "id" | "name" | "type">) {
-  if (conversation.type === "match") return "🎾";
-  return conversationTitle(conversation).slice(0, 1);
-}
-
 function shortUid(uid?: string) {
   return uid ? uid.slice(0, 6) : "未知";
 }
@@ -44,7 +31,6 @@ function reportApproveError(error: unknown) {
 }
 
 function MessagesPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     user,
@@ -52,68 +38,45 @@ function MessagesPageContent() {
     matches,
     respondToApplicant,
     subscribeConversationMessages,
+    getConversationMessages,
     markConversationRead,
     undoApplicantDecision,
   } = useApp();
-  const [isMobile, setIsMobile] = useState(false);
-  const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<ConversationTab>("all");
-  const [selectedId, setSelectedId] = useState("");
+  const selectedId = searchParams.get("conversation")?.trim() ?? "";
   const [draft, setDraft] = useState("");
   const [undoTarget, setUndoTarget] = useState<{
     matchId: string;
     applicantUid: string;
   } | null>(null);
-  const returnTo = searchParams.get("from");
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  const filteredConversations = useMemo(
-    () =>
-      conversations.filter((conversation) => {
-        const matchesTab = tab === "all" || conversation.type === tab;
-        const title = conversationTitle(conversation).toLowerCase();
-        const matchesQuery =
-          query.trim().length === 0 ||
-          title.includes(query.trim().toLowerCase()) ||
-          (conversation.lastMessage ?? "").toLowerCase().includes(query.trim().toLowerCase());
-        return matchesTab && matchesQuery;
-      }),
-    [conversations, query, tab],
-  );
 
   const selectedConversation: Conversation | undefined = useMemo(() => {
-    if (selectedId) {
-      const existing = conversations.find((c) => c.id === selectedId);
-      if (existing) return existing;
-      if (selectedId.startsWith("match_")) {
-        const matchId = selectedId.replace(/^match_/, "");
-        const match = matches.find((item) => item.id === matchId);
-        if (match) {
-          return {
-            id: selectedId,
-            type: "match",
-            participants: [match.ownerUid, ...match.applicants.filter((app) => app.status === "accepted").map((app) => app.uid)],
-            name: `揪球：${match.title}`,
-            relatedId: match.id,
-            messages: [],
-            unreadCount: 0,
-            ownerUid: match.ownerUid,
-          };
-        }
+    if (!selectedId) return undefined;
+
+    const messages = getConversationMessages(selectedId);
+
+    if (selectedId.startsWith("match_")) {
+      const matchId = selectedId.replace(/^match_/, "");
+      const match = matches.find((item) => item.id === matchId);
+      if (match) {
+        return {
+          id: selectedId,
+          type: "match",
+          participants: [
+            match.ownerUid,
+            ...match.applicants.filter((app) => app.status === "accepted").map((app) => app.uid),
+          ],
+          name: `揪球：${match.title}`,
+          relatedId: match.id,
+          messages,
+          unreadCount: 0,
+          ownerUid: match.ownerUid,
+        };
       }
-      return undefined;
     }
-    if (!isMobile && filteredConversations.length > 0) {
-      return filteredConversations[0];
-    }
-    return undefined;
-  }, [selectedId, conversations, matches, isMobile, filteredConversations]);
+
+    const existing = conversations.find((conversation) => conversation.id === selectedId);
+    return existing ? { ...existing, messages } : undefined;
+  }, [selectedId, conversations, matches, getConversationMessages]);
 
   const selectedMatch = matches.find((match) => match.id === selectedConversation?.relatedId);
   const selectedApplicant = selectedMatch?.applicants.find((applicant) => applicant.uid === user?.uid);
@@ -132,28 +95,16 @@ function MessagesPageContent() {
       : "";
 
   useEffect(() => {
-    const conversationId = searchParams.get("conversation");
-    if (conversationId) setSelectedId(conversationId);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!isMobile && !selectedId && filteredConversations[0]) {
-      setSelectedId(filteredConversations[0].id);
-    }
-  }, [isMobile, selectedId, filteredConversations]);
-
-  useEffect(() => {
     if (selectedConversation) {
       markConversationRead(selectedConversation.id);
     }
   }, [markConversationRead, selectedConversation]);
 
   useEffect(() => {
-    const id = selectedConversation?.id;
-    if (!id) return;
-    const unsubscribe = subscribeConversationMessages(id);
+    if (!selectedId) return;
+    const unsubscribe = subscribeConversationMessages(selectedId);
     return unsubscribe;
-  }, [selectedConversation?.id, subscribeConversationMessages]);
+  }, [selectedId, subscribeConversationMessages]);
 
   async function submitMessage(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -177,9 +128,6 @@ function MessagesPageContent() {
     }
   }
 
-  const showList = !isMobile || !selectedId;
-  const showChat = !isMobile || Boolean(selectedId);
-
   if (!user) {
     return (
       <section className="mx-auto max-w-md px-6 py-10">
@@ -197,108 +145,24 @@ function MessagesPageContent() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl px-0 md:px-4 md:py-4">
+    <section className="mx-auto max-w-3xl px-0 md:px-4 md:py-4">
       <div
         className="flex overflow-hidden bg-white ring-1 ring-parchment md:rounded-[1.5rem]"
         style={{
           height: "calc(100dvh - 68px - 96px - env(safe-area-inset-bottom))",
         }}
       >
-        {/* 左欄：對話列表 */}
-        <div
-          className={`${showList ? "flex" : "hidden"} w-full shrink-0 flex-col border-parchment md:flex md:w-80 md:border-r`}
-        >
-          <div className="border-b border-parchment p-4">
-            <h1 className="text-2xl font-bold text-pine">訊息</h1>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜尋對話..."
-              className="mt-4 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
-            />
-            <div className="mt-3 flex gap-2">
-              {tabs.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={`rounded-full px-4 py-2 text-sm font-bold ${
-                    tab === item.id ? "bg-pine text-white" : "bg-parchment text-pine"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 space-y-2 overflow-y-auto p-3">
-            {filteredConversations.length > 0 ? (
-              filteredConversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  type="button"
-                  onClick={() => setSelectedId(conversation.id)}
-                  className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
-                    selectedConversation?.id === conversation.id ? "bg-parchment" : "bg-ivory"
-                  }`}
-                >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pine text-sm font-bold text-white">
-                    {conversationInitial(conversation)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-pine">{conversationTitle(conversation)}</span>
-                    <span className="block truncate text-xs text-muted">
-                      {conversation.lastMessage || "尚無訊息"}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block text-[11px] text-muted">
-                      {formatTime(conversation.lastMessageTime)}
-                    </span>
-                    {conversation.unreadCount > 0 ? (
-                      <span className="mt-1 inline-flex min-w-5 justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
-                        {conversation.unreadCount}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="rounded-2xl bg-ivory p-4 text-sm text-muted">目前沒有對話</p>
-            )}
-          </div>
-        </div>
-
-        {/* 右欄：聊天室 */}
-        <div className={`${showChat ? "flex" : "hidden"} min-w-0 flex-1 flex-col bg-ivory md:flex`}>
+        <div className="flex min-w-0 flex-1 flex-col bg-ivory">
           {selectedConversation ? (
             <>
               <header className="flex items-center gap-3 border-b border-parchment bg-white px-4 py-3">
-                {isMobile && selectedId ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (returnTo === "match") {
-                        router.push("/match");
-                        return;
-                      }
-
-                      setSelectedId("");
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "8px",
-                      fontSize: "18px",
-                      color: "#1E3D2F",
-                    }}
-                    aria-label={returnTo === "match" ? "返回揪球" : "返回對話列表"}
-                  >
-                    ← 返回
-                  </button>
-                ) : null}
+                <Link
+                  href="/match"
+                  className="shrink-0 rounded-full px-3 py-2 text-sm font-bold text-pine hover:bg-ivory"
+                  aria-label="返回揪球列表"
+                >
+                  ← 返回
+                </Link>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-lg font-bold text-pine">{conversationTitle(selectedConversation)}</h2>
                   <p className="mt-0.5 text-xs text-muted">
@@ -371,54 +235,60 @@ function MessagesPageContent() {
                     {sendDisabledReason}
                   </div>
                 ) : null}
-                {selectedConversation.messages.map((message) => {
-                  const isMine = message.senderUid === user.uid;
-                  const isSystem = message.type === "system";
+                {selectedConversation.messages.length > 0 ? (
+                  selectedConversation.messages.map((message) => {
+                    const isMine = message.senderUid === user.uid;
+                    const isSystem = message.type === "system";
 
-                  return (
-                    <div
-                      key={message.id}
-                      className={
-                        isSystem ? "text-center" : isMine ? "flex justify-end" : "flex justify-start"
-                      }
-                    >
+                    return (
                       <div
-                        onDoubleClick={() => {
-                          if (
-                            selectedMatch &&
-                            message.type === "system" &&
-                            message.content.includes("主揪已")
-                          ) {
-                            const applicant = selectedMatch.applicants.find((item) =>
-                              message.content.includes(item.nickname),
-                            );
-                            if (applicant) {
-                              setUndoTarget({
-                                matchId: selectedMatch.id,
-                                applicantUid: applicant.uid,
-                              });
-                            }
-                          }
-                        }}
+                        key={message.id}
                         className={
-                          isSystem
-                            ? "inline-block rounded-2xl bg-parchment px-4 py-2 text-xs leading-5 text-muted"
-                            : isMine
-                              ? "max-w-[78%] rounded-2xl bg-clay px-4 py-3 text-sm leading-6 text-white"
-                              : "max-w-[78%] rounded-2xl bg-white px-4 py-3 text-sm leading-6 text-ink shadow-sm"
+                          isSystem ? "text-center" : isMine ? "flex justify-end" : "flex justify-start"
                         }
                       >
-                        {!isMine && !isSystem ? (
-                          <p className="mb-1 flex items-center gap-2 text-xs font-bold text-pine">
-                            {message.senderNickname}
-                          </p>
-                        ) : null}
-                        {message.content}
-                        <p className="mt-1 text-[10px] opacity-70">{formatTime(message.timestamp)}</p>
+                        <div
+                          onDoubleClick={() => {
+                            if (
+                              selectedMatch &&
+                              message.type === "system" &&
+                              message.content.includes("主揪已")
+                            ) {
+                              const applicant = selectedMatch.applicants.find((item) =>
+                                message.content.includes(item.nickname),
+                              );
+                              if (applicant) {
+                                setUndoTarget({
+                                  matchId: selectedMatch.id,
+                                  applicantUid: applicant.uid,
+                                });
+                              }
+                            }
+                          }}
+                          className={
+                            isSystem
+                              ? "inline-block rounded-2xl bg-parchment px-4 py-2 text-xs leading-5 text-muted"
+                              : isMine
+                                ? "max-w-[78%] rounded-2xl bg-clay px-4 py-3 text-sm leading-6 text-white"
+                                : "max-w-[78%] rounded-2xl bg-white px-4 py-3 text-sm leading-6 text-ink shadow-sm"
+                          }
+                        >
+                          {!isMine && !isSystem ? (
+                            <p className="mb-1 flex items-center gap-2 text-xs font-bold text-pine">
+                              {message.senderNickname}
+                            </p>
+                          ) : null}
+                          {message.content}
+                          <p className="mt-1 text-[10px] opacity-70">{formatTime(message.timestamp)}</p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="flex h-full items-center justify-center text-center text-sm text-muted">
+                    尚無訊息
+                  </div>
+                )}
               </div>
 
               <form
@@ -444,8 +314,14 @@ function MessagesPageContent() {
               </form>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted">
-              選擇一個對話開始聊天
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center text-sm text-muted">
+              <p>{selectedId ? "找不到可開啟的聊天室" : "請從揪球列表進入聊天室"}</p>
+              <Link
+                href="/match"
+                className="inline-flex rounded-full bg-clay px-5 py-3 text-sm font-bold text-white"
+              >
+                前往揪球列表
+              </Link>
             </div>
           )}
         </div>
