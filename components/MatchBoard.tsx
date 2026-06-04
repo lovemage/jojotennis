@@ -268,7 +268,7 @@ export default function MatchBoard() {
     router.push(`/messages?conversation=${conversationId}&from=match`);
   }
 
-  function openMatchConversation(match: Match) {
+  function openMatchChatSettings(match: Match) {
     if (isMatchExpired(match) || match.status === "closed") {
       return;
     }
@@ -278,26 +278,34 @@ export default function MatchBoard() {
       return;
     }
 
-    if (match.ownerUid === user.uid) {
-      const [startHour = "09", startMinute = "00"] = match.startTime.split(":");
-      const [endHour = "11", endMinute = "00"] = match.endTime.split(":");
-      setChatSettingsMatch(match);
-      setChatSettingsError("");
-      setChatSettings({
-        name: `揪球：${match.title}`,
-        city: match.city,
-        district: match.district,
-        venue: match.venue,
-        date: match.date.replaceAll("/", "-"),
-        startHour,
-        startMinute,
-        endHour,
-        endMinute,
-        totalSlots: String(match.totalSlots),
-        ntrpRequired: match.ntrpRequired.length > 0 ? match.ntrpRequired : ["不限"],
-        joinMode: match.joinMode === "private" ? "private" : "approval",
-        message: `主揪已開啟「${match.title}」聊天室，請在這裡確認集合地點、費用與注意事項。\n請勿在平台外提前付款，謹防詐騙。`,
-      });
+    const [startHour = "09", startMinute = "00"] = match.startTime.split(":");
+    const [endHour = "11", endMinute = "00"] = match.endTime.split(":");
+    setChatSettingsMatch(match);
+    setChatSettingsError("");
+    setChatSettings({
+      name: `揪球：${match.title}`,
+      city: match.city,
+      district: match.district,
+      venue: match.venue,
+      date: match.date.replaceAll("/", "-"),
+      startHour,
+      startMinute,
+      endHour,
+      endMinute,
+      totalSlots: String(match.totalSlots),
+      ntrpRequired: match.ntrpRequired.length > 0 ? match.ntrpRequired : ["不限"],
+      joinMode: match.joinMode === "private" ? "private" : "approval",
+      message: `主揪已開啟「${match.title}」聊天室，請在這裡確認集合地點、費用與注意事項。\n請勿在平台外提前付款，謹防詐騙。`,
+    });
+  }
+
+  function openMatchConversation(match: Match) {
+    if (isMatchExpired(match) || match.status === "closed") {
+      return;
+    }
+
+    if (!user) {
+      setShowLoginPrompt(true);
       return;
     }
 
@@ -470,7 +478,7 @@ export default function MatchBoard() {
                 ) : null}
               </div>
               {!isClosed ? (
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className={`mt-4 grid gap-3 ${isOwner ? "grid-cols-3" : "grid-cols-2"}`}>
                   <button
                     type="button"
                     onClick={(event) => {
@@ -481,6 +489,18 @@ export default function MatchBoard() {
                   >
                     開啟聊天室
                   </button>
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openMatchChatSettings(match);
+                      }}
+                      className="flex h-11 items-center justify-center rounded-lg border border-parchment text-sm font-bold text-pine"
+                    >
+                      設定球局
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={joinBusy || hasApplied || isOwner || isFull}
