@@ -574,11 +574,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
           delete messageUnsubs.current[conversationId];
         };
       }
+
+      const isSameMessageList = (left: ChatMessage[], right: ChatMessage[]) => {
+        if (left.length !== right.length) return false;
+        return left.every((item, index) => {
+          const next = right[index];
+          return (
+            item.id === next.id &&
+            item.senderUid === next.senderUid &&
+            item.senderNickname === next.senderNickname &&
+            item.content === next.content &&
+            item.timestamp === next.timestamp &&
+            item.type === next.type &&
+            Array.isArray(item.readBy) &&
+            Array.isArray(next.readBy) &&
+            item.readBy.length === next.readBy.length &&
+            item.readBy.every((uid, readIndex) => uid === next.readBy[readIndex])
+          );
+        });
+      };
+
       const unsub = subscribeToMessages(conversationId, (msgs) => {
-        setConvMessages((prev) => ({
-          ...prev,
-          [conversationId]: msgs.map((m) => toChatMessage(m)),
-        }));
+        const nextMessages = msgs.map((m) => toChatMessage(m));
+        setConvMessages((prev) => {
+          const current = prev[conversationId];
+          if (current && isSameMessageList(current, nextMessages)) return prev;
+          return {
+            ...prev,
+            [conversationId]: nextMessages,
+          };
+        });
       });
       messageUnsubs.current[conversationId] = unsub;
       return () => {

@@ -3,6 +3,7 @@ import type { Conversation, Message } from "./schema";
 
 const MESSAGE_POLL_MS = 5000;
 const MESSAGE_HIDDEN_POLL_MS = 60000;
+const MESSAGE_FETCH_LIMIT = 30;
 const CONVERSATION_POLL_MS = 30000;
 const ADMIN_CONVERSATION_POLL_MS = 60000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
@@ -28,11 +29,14 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-async function fetchChatMessages(convId: string): Promise<Message[]> {
+async function fetchChatMessages(convId: string, limit = MESSAGE_FETCH_LIMIT): Promise<Message[]> {
   const headers = await getAuthHeader();
-  const response = await fetch(`/api/chat/messages?conversationId=${encodeURIComponent(convId)}`, {
+  const response = await fetch(
+    `/api/chat/messages?conversationId=${encodeURIComponent(convId)}&limit=${limit}`,
+    {
     headers,
-  });
+    },
+  );
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "讀取訊息失敗");
   const data = (await response.json()) as { messages?: Message[] };
   return data.messages ?? [];
