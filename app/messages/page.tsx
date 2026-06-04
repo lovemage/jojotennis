@@ -175,7 +175,6 @@ function MessagesPageContent() {
       : isChatDisabled
         ? chatServiceMessage
         : "";
-      : "";
   const conversationReadyNotice = selectedConversation?.type === "match" && !selectedMatch ? "球局資料同步中，部分權限判斷以系統結果為準..." : "";
 
   const handleBack = () => {
