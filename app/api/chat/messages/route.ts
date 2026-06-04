@@ -35,7 +35,7 @@ async function canReadMatchConversation(matchId: string, uid: string) {
     .where("isDeleted", "==", false)
     .limit(1)
     .get();
-  return !appSnap.empty;
+  return appSnap.docs.some((doc) => doc.data().status === "accepted");
 }
 
 async function resolveConversation(convId: string) {
@@ -75,8 +75,9 @@ export async function GET(request: Request) {
 
   const matchId = conv.type === "match" ? conv.relatedId ?? convId.replace(/^match_/, "") : "";
   const canRead =
-    canReadConversation(conv, auth.uid) ||
-    (matchId ? await canReadMatchConversation(matchId, auth.uid) : false);
+    conv.type === "match"
+      ? Boolean(matchId && (await canReadMatchConversation(matchId, auth.uid)))
+      : canReadConversation(conv, auth.uid);
   if (!canRead) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
@@ -106,7 +107,12 @@ export async function POST(request: Request) {
 
   const conv = await resolveConversation(convId);
   if (!conv) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-  if (!canSendConversation(conv, auth.uid)) {
+  const matchId = conv.type === "match" ? conv.relatedId ?? convId.replace(/^match_/, "") : "";
+  const canSend =
+    conv.type === "match"
+      ? Boolean(matchId && (await canReadMatchConversation(matchId, auth.uid)))
+      : canSendConversation(conv, auth.uid);
+  if (!canSend) {
     return NextResponse.json({ error: "主揪核准前無法在此聊天室發送訊息" }, { status: 403 });
   }
 

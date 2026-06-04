@@ -52,6 +52,20 @@ function openDatePicker(input: HTMLInputElement | null) {
   }
 }
 
+function canOpenMatchConversation(match: Match, uid?: string) {
+  if (!uid) return false;
+  if (match.ownerUid === uid) return true;
+  return match.applicants.some((applicant) => applicant.uid === uid && applicant.status === "accepted");
+}
+
+function getMatchConversationBlockedMessage(match: Match, uid?: string) {
+  const application = match.applicants.find((applicant) => applicant.uid === uid);
+  if (application?.status === "pending") {
+    return "主揪核准前，暫時無法開啟聊天室。";
+  }
+  return "加入球局並經主揪核准後才能開啟聊天室。";
+}
+
 export default function MatchBoard() {
   const router = useRouter();
   const { user, matches, addMatch, updateMatchSettings, applyMatch, getOrCreateConversation } = useApp();
@@ -309,6 +323,11 @@ export default function MatchBoard() {
       return;
     }
 
+    if (!canOpenMatchConversation(match, user.uid)) {
+      alert(getMatchConversationBlockedMessage(match, user.uid));
+      return;
+    }
+
     const conversationId = getOrCreateConversation(match.ownerUid, match.ownerNickname, {
       type: "match",
       relatedId: match.id,
@@ -418,6 +437,7 @@ export default function MatchBoard() {
           const myApplication = match.applicants.find((applicant) => applicant.uid === user?.uid);
           const hasApplied = Boolean(myApplication);
           const isOwner = user?.uid === match.ownerUid;
+          const canOpenChat = canOpenMatchConversation(match, user?.uid);
           return (
             <article
               key={match.id}
@@ -485,9 +505,11 @@ export default function MatchBoard() {
                       event.stopPropagation();
                       openMatchConversation(match);
                     }}
-                    className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
+                    className={`flex h-11 items-center justify-center rounded-lg border text-sm font-bold ${
+                      canOpenChat ? "border-pine text-pine" : "border-muted/30 text-muted"
+                    }`}
                   >
-                    開啟聊天室
+                    {canOpenChat ? "開啟聊天室" : "等待核准"}
                   </button>
                   {isOwner ? (
                     <button

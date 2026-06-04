@@ -123,8 +123,7 @@ function MessagesPageContent() {
     !selectedConversation ||
     selectedConversation.type !== "match" ||
     isMatchHost ||
-    selectedApplicant?.status === "accepted" ||
-    selectedConversation.participants.includes(user?.uid ?? "");
+    selectedApplicant?.status === "accepted";
   const sendDisabledReason =
     selectedConversation?.type === "match" && !canSendSelectedConversation
       ? selectedApplicant?.status === "pending"
