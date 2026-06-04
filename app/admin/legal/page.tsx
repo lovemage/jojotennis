@@ -106,7 +106,7 @@ export default function AdminLegalPage() {
     setStatus(null);
     try {
       await saveLegalPage(draft);
-      setStatus({ tone: "ok", text: "已儲存到 Firestore。" });
+      setStatus({ tone: "ok", text: "已儲存到 Supabase。" });
     } catch (err) {
       setStatus({
         tone: "err",
@@ -124,7 +124,7 @@ export default function AdminLegalPage() {
           <p className="text-sm font-semibold text-gold">Admin</p>
           <h1 className="mt-2 text-3xl font-bold">隱私權／服務條款</h1>
           <p className="mt-4 leading-7 text-parchment">
-            編輯 /privacy 與 /terms 兩個公開頁面的內容。儲存後會即時推送到 Firestore，公開頁面會自動更新。
+            編輯 /privacy 與 /terms 兩個公開頁面的內容。儲存後會即時推送到 Supabase，公開頁面會自動更新。
           </p>
           <p className="mt-3 text-xs text-parchment/70">
             支援格式：空白行分段、行首 <code>- </code> 變項目符號、

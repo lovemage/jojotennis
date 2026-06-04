@@ -1,18 +1,3 @@
-import { db } from "./firebase";
-import {
-  collection,
-  doc,
-  getDocs,
-  increment,
-  limit,
-  orderBy,
-  query,
-  runTransaction,
-  startAfter,
-  updateDoc,
-  serverTimestamp,
-  type QueryDocumentSnapshot,
-} from "firebase/firestore";
 import type { User as SchemaUser } from "./schema";
 import { USE_SUPABASE } from "./config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
@@ -31,31 +16,6 @@ export type AdminUserRow = {
   nicknameChangesUsed: number;
 };
 
-function toAdminUserRow(
-  snap: QueryDocumentSnapshot,
-): AdminUserRow {
-  const data = snap.data() as Partial<SchemaUser> & Record<string, unknown>;
-  const nickname = String(data.nickname ?? "新球友");
-  const createdAt =
-    data.createdAt && typeof data.createdAt === "object" && "toDate" in data.createdAt
-      ? (data.createdAt as { toDate: () => Date }).toDate().getTime()
-      : Date.now();
-
-  return {
-    uid: snap.id,
-    email: String(data.email ?? ""),
-    nickname,
-    ntrp: String(data.ntrp ?? "2.0"),
-    region: String(data.region ?? "台北市"),
-    yearsPlaying: Number(data.yearsPlaying ?? 0),
-    avatarInitial: nickname[0] || "?",
-    role: (data.role as SchemaUser["role"]) ?? "user",
-    isActive: data.isActive !== false,
-    createdAt,
-    nicknameChangesUsed: Number(data.nicknameChangesUsed ?? 0),
-  };
-}
-
 function toAdminUserRowFromSupabase(row: Record<string, unknown>): AdminUserRow {
   const nickname = String(row.nickname ?? "新球友");
   return {
@@ -73,47 +33,32 @@ function toAdminUserRowFromSupabase(row: Record<string, unknown>): AdminUserRow 
   };
 }
 
-function isMissingSupabaseUsersTable(error: { message?: string; code?: string } | null) {
-  if (!error) return false;
-  return (
-    error.code === "PGRST205" ||
-    /Could not find the table 'public\.users'|relation .*users.* does not exist/i.test(
-      error.message ?? "",
-    )
-  );
-}
-
 export async function fetchUsersPage(
   pageSize = 20,
-  cursor?: QueryDocumentSnapshot,
-): Promise<{ users: AdminUserRow[]; lastDoc: QueryDocumentSnapshot | null }> {
+  cursor?: string | null,
+): Promise<{ users: AdminUserRow[]; lastDoc: string | null }> {
   if (USE_SUPABASE && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase
+    let request = supabase
       .from("users")
       .select("*")
       .eq("is_deleted", false)
       .order("created_at", { ascending: false })
       .limit(pageSize);
+    if (cursor) request = request.lt("created_at", cursor);
 
+    const { data, error } = await request;
     if (!error) {
+      const rows = data ?? [];
       return {
-        users: (data ?? []).map((row) => toAdminUserRowFromSupabase(row as Record<string, unknown>)),
-        lastDoc: null,
+        users: rows.map((row) => toAdminUserRowFromSupabase(row as Record<string, unknown>)),
+        lastDoc: rows.length > 0 ? String((rows[rows.length - 1] as Record<string, unknown>).created_at ?? "") : null,
       };
     }
-
-    if (!isMissingSupabaseUsersTable(error)) throw error;
+    throw error;
   }
 
-  const q = cursor
-    ? query(collection(db, "users"), orderBy("createdAt", "desc"), startAfter(cursor), limit(pageSize))
-    : query(collection(db, "users"), orderBy("createdAt", "desc"), limit(pageSize));
-
-  const snap = await getDocs(q);
-  const users = snap.docs.map(toAdminUserRow);
-  const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-  return { users, lastDoc };
+  throw new Error("會員管理需要 Supabase 設定");
 }
 
 export async function updateUserAdminFields(
@@ -136,13 +81,10 @@ export async function updateUserAdminFields(
       .eq("uid", uid);
 
     if (!error) return;
-    if (!isMissingSupabaseUsersTable(error)) throw error;
+    throw error;
   }
 
-  await updateDoc(doc(db, "users", uid), {
-    ...fields,
-    updatedAt: serverTimestamp(),
-  });
+  throw new Error("會員管理需要 Supabase 設定");
 }
 
 export const NICKNAME_CHANGE_LIMIT = 3;
@@ -155,6 +97,21 @@ export async function updateUserProfile(
 ): Promise<void> {
   if (USE_SUPABASE && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
+    const { data: current, error: readError } = await supabase
+      .from("users")
+      .select("nickname,nickname_changes_used")
+      .eq("uid", uid)
+      .maybeSingle();
+    if (readError) throw readError;
+
+    const currentNickname = String((current as Record<string, unknown> | null)?.nickname ?? "");
+    const used = Number((current as Record<string, unknown> | null)?.nickname_changes_used ?? 0);
+    const nextNickname = fields.nickname?.trim();
+    const isNicknameChange = Boolean(nextNickname && nextNickname !== currentNickname);
+    if (isNicknameChange && used >= NICKNAME_CHANGE_LIMIT) {
+      throw new Error("已用完三次暱稱更改機會，請聯繫管理員");
+    }
+
     const { error } = await supabase
       .from("users")
       .update({
@@ -164,39 +121,16 @@ export async function updateUserProfile(
         years_playing: fields.yearsPlaying,
         bio: fields.bio,
         avatar_url: fields.avatarUrl,
+        nickname_changes_used: isNicknameChange ? used + 1 : used,
         updated_at: new Date().toISOString(),
       })
       .eq("uid", uid);
 
     if (!error) return;
-    if (!isMissingSupabaseUsersTable(error)) throw error;
+    throw error;
   }
 
-  const userRef = doc(db, "users", uid);
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    const current = snap.exists() ? (snap.data() as SchemaUser) : null;
-    const currentNickname = current?.nickname ?? "";
-    const used = Number(current?.nicknameChangesUsed ?? 0);
-    let isNicknameChange = false;
-    if (typeof fields.nickname === "string") {
-      const next = fields.nickname.trim();
-      if (next && next !== currentNickname) {
-        if (used >= NICKNAME_CHANGE_LIMIT) {
-          throw new Error("已用完三次暱稱更改機會，請聯繫管理員");
-        }
-        isNicknameChange = true;
-      }
-    }
-    const payload: Record<string, unknown> = {
-      ...fields,
-      updatedAt: serverTimestamp(),
-    };
-    if (isNicknameChange) {
-      payload.nicknameChangesUsed = increment(1);
-    }
-    tx.update(userRef, payload);
-  });
+  throw new Error("會員資料更新需要 Supabase 設定");
 }
 
 export async function adminResetNicknameChanges(uid: string): Promise<void> {
@@ -210,13 +144,10 @@ export async function adminResetNicknameChanges(uid: string): Promise<void> {
       })
       .eq("uid", uid);
     if (!error) return;
-    if (!isMissingSupabaseUsersTable(error)) throw error;
+    throw error;
   }
 
-  await updateDoc(doc(db, "users", uid), {
-    nicknameChangesUsed: 0,
-    updatedAt: serverTimestamp(),
-  });
+  throw new Error("會員管理需要 Supabase 設定");
 }
 
 export async function adminSetUserActive(uid: string, isActive: boolean): Promise<void> {
@@ -233,10 +164,7 @@ export async function adminSetUserActive(uid: string, isActive: boolean): Promis
     return;
   }
 
-  await updateDoc(doc(db, "users", uid), {
-    isActive,
-    updatedAt: serverTimestamp(),
-  });
+  throw new Error("會員管理需要 Supabase 設定");
 }
 
 export { getUserProfile } from "./authService";

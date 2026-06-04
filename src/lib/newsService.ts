@@ -1,40 +1,7 @@
-import { db } from "./firebase";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-  orderBy,
-  query,
-} from "firebase/firestore";
 import type { NewsArticle } from "@/data/news";
 import { uploadDataUrlImage, uploadImageFile } from "./uploadMedia";
 import { ENABLE_SUPABASE_NEWS, USE_SUPABASE } from "./config";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
-
-function toNewsArticle(id: string, data: Record<string, unknown>): NewsArticle {
-  const publishedAt =
-    typeof data.publishedAt === "string"
-      ? data.publishedAt
-      : data.publishedAt && typeof (data.publishedAt as { toDate?: () => Date }).toDate === "function"
-        ? (data.publishedAt as { toDate: () => Date }).toDate().toISOString().slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
-
-  return {
-    id,
-    title: String(data.title ?? ""),
-    slug: String(data.slug ?? id),
-    category: (data.category as NewsArticle["category"]) ?? "賽事",
-    coverImage: String(data.coverImageUrl ?? data.coverImage ?? ""),
-    excerpt: String(data.excerpt ?? ""),
-    content: String(data.content ?? ""),
-    publishedAt,
-    isPublished: Boolean(data.isPublished),
-    author: String(data.author ?? "JoJo Tennis 編輯部"),
-  };
-}
 
 function toNewsArticleFromSupabase(row: Record<string, unknown>): NewsArticle {
   return {
@@ -67,38 +34,23 @@ async function fetchSupabaseNews() {
   return (data ?? []).map((row) => toNewsArticleFromSupabase(row as Record<string, unknown>));
 }
 
-function subscribeToFirestoreNews(cb: (articles: NewsArticle[]) => void) {
-  return onSnapshot(
-    query(collection(db, "news"), orderBy("publishedAt", "desc")),
-    (snap) => {
-      cb(snap.docs.map((d) => toNewsArticle(d.id, d.data() as Record<string, unknown>)));
-    },
-    () => cb([]),
-  );
-}
-
 export function subscribeToNews(cb: (articles: NewsArticle[]) => void) {
   if (USE_SUPABASE && ENABLE_SUPABASE_NEWS && hasSupabaseConfig()) {
     const supabase = getSupabaseBrowserClient();
     let active = true;
-    let fallbackUnsub: (() => void) | null = null;
 
     fetchSupabaseNews()
       .then((articles) => {
         if (active) cb(articles);
       })
       .catch((err) => {
-        console.warn("[news] Supabase 讀取失敗，改用 Firebase：", err.message);
-        if (active) {
-          cb([]);
-          fallbackUnsub = subscribeToFirestoreNews(cb);
-        }
+        console.error("[news] Supabase 讀取失敗：", err.message);
+        if (active) cb([]);
       });
 
     const channel = supabase
       .channel(createRealtimeChannelName())
       .on("postgres_changes", { event: "*", schema: "public", table: "news" }, () => {
-        if (fallbackUnsub) return;
         fetchSupabaseNews()
           .then((articles) => {
             if (active) cb(articles);
@@ -109,12 +61,12 @@ export function subscribeToNews(cb: (articles: NewsArticle[]) => void) {
 
     return () => {
       active = false;
-      fallbackUnsub?.();
       void supabase.removeChannel(channel);
     };
   }
 
-  return subscribeToFirestoreNews(cb);
+  cb([]);
+  return () => {};
 }
 
 export async function saveNewsArticle(
@@ -150,25 +102,7 @@ export async function saveNewsArticle(
     return { ...article, coverImage: coverImageUrl };
   }
 
-  const payload = {
-    newsId: article.id,
-    title: article.title,
-    slug: article.slug,
-    category: article.category,
-    content: article.content,
-    excerpt: article.excerpt,
-    coverImageUrl,
-    coverImage: coverImageUrl,
-    isPublished: article.isPublished,
-    publishedAt: article.publishedAt,
-    author: article.author,
-    isDeleted: false,
-    updatedAt: serverTimestamp(),
-    createdAt: serverTimestamp(),
-  };
-
-  await setDoc(doc(db, "news", article.id), payload, { merge: true });
-  return { ...article, coverImage: coverImageUrl };
+  throw new Error("新聞管理需要 Supabase 設定");
 }
 
 export async function deleteNewsArticle(articleId: string) {
@@ -187,5 +121,5 @@ export async function deleteNewsArticle(articleId: string) {
     return;
   }
 
-  await deleteDoc(doc(db, "news", articleId));
+  throw new Error("新聞刪除需要 Supabase 設定");
 }

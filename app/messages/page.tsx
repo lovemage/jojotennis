@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { Conversation } from "@/context/AppContext";
-import { sendMessage as sendFirestoreMessage } from "@/lib/messageService";
+import { sendMessage } from "@/lib/messageService";
 import UserStatsBadge from "@/components/UserStatsBadge";
 
 function formatTime(value?: number) {
@@ -27,7 +27,7 @@ function shortUid(uid?: string) {
 
 function reportApproveError(error: unknown) {
   const message = error instanceof Error ? error.message : "操作失敗";
-  alert(message.includes("Quota exceeded") ? "Firebase 配額已用完，暫時無法更新核准狀態。" : message);
+  alert(message.includes("Quota exceeded") ? "後端服務配額已用完，暫時無法更新核准狀態。" : message);
 }
 
 function MessagesPageContent() {
@@ -115,7 +115,7 @@ function MessagesPageContent() {
     }
     const trimmed = draft.trim();
     try {
-      await sendFirestoreMessage(
+      await sendMessage(
         selectedConversation.id,
         user.uid,
         user.nickname,

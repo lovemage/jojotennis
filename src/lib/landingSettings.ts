@@ -1,7 +1,6 @@
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
-import { USE_FIREBASE } from "./config";
+import { USE_SUPABASE } from "./config";
 import { getOptimizedCloudinaryUrl } from "./cloudinaryUrl";
+import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
 export type LandingHeroImage = {
   url: string;
@@ -47,12 +46,31 @@ function readLocalHeroImages() {
 }
 
 export function subscribeLandingHeroImages(cb: (images: LandingHeroImage[]) => void) {
-  if (USE_FIREBASE && db) {
-    return onSnapshot(
-      doc(db, "site_settings", "landing"),
-      (snap) => cb(normalizeHeroImages(snap.data()?.heroImages)),
-      () => cb(readLocalHeroImages()),
-    );
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    let active = true;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "landing")
+        .maybeSingle();
+      if (error) throw error;
+      if (active) cb(normalizeHeroImages((data as { value?: { heroImages?: unknown } } | null)?.value?.heroImages));
+    };
+    load().catch(() => {
+      if (active) cb(readLocalHeroImages());
+    });
+    const channel = supabase
+      .channel("public:site_settings:landing")
+      .on("postgres_changes", { event: "*", schema: "public", table: "site_settings" }, () => {
+        void load().catch(() => {});
+      })
+      .subscribe();
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
   }
 
   cb(readLocalHeroImages());
@@ -65,8 +83,12 @@ export async function saveLandingHeroImages(images: LandingHeroImage[]) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   }
 
-  if (USE_FIREBASE && db) {
-    await setDoc(doc(db, "site_settings", "landing"), { heroImages: normalized }, { merge: true });
+  if (USE_SUPABASE && hasSupabaseConfig()) {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("site_settings")
+      .upsert({ key: "landing", value: { heroImages: normalized }, updated_at: new Date().toISOString() });
+    if (error) throw error;
   }
 
   return normalized;

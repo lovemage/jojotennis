@@ -10,22 +10,21 @@ import {
   adminSetUserActive,
   type AdminUserRow,
 } from "@/lib/userService";
-import { USE_FIREBASE } from "@/lib/config";
-import type { QueryDocumentSnapshot } from "firebase/firestore";
+import { USE_SUPABASE } from "@/lib/config";
 
 const PAGE_SIZE = 20;
 
 export default function AdminUsersPage() {
   const { users: contextUsers, updateUserByAdmin } = useApp();
   const [pageUsers, setPageUsers] = useState<AdminUserRow[]>([]);
-  const [cursor, setCursor] = useState<QueryDocumentSnapshot | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Partial<User>>>({});
 
-  const loadPage = useCallback(async (nextCursor?: QueryDocumentSnapshot | null) => {
-    if (!USE_FIREBASE) return;
+  const loadPage = useCallback(async (nextCursor?: string | null) => {
+    if (!USE_SUPABASE) return;
     setLoading(true);
     try {
       const result = await fetchUsersPage(PAGE_SIZE, nextCursor ?? undefined);
@@ -38,13 +37,13 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (USE_FIREBASE) {
+    if (USE_SUPABASE) {
       void loadPage();
     }
   }, [loadPage]);
 
   const displayUsers = useMemo(() => {
-    const source: Array<User | AdminUserRow> = USE_FIREBASE
+    const source: Array<User | AdminUserRow> = USE_SUPABASE
       ? pageUsers
       : contextUsers.map((u) => ({
           ...u,
@@ -70,7 +69,7 @@ export default function AdminUsersPage() {
 
   async function saveMember(member: User | AdminUserRow) {
     const draft = draftFor(member);
-    if (USE_FIREBASE) {
+    if (USE_SUPABASE) {
       await updateUserAdminFields(member.uid, {
         nickname: draft.nickname,
         ntrp: draft.ntrp,
@@ -94,7 +93,7 @@ export default function AdminUsersPage() {
 
   async function toggleActive(member: User | AdminUserRow) {
     const nextActive = draftFor(member).isActive === false;
-    if (USE_FIREBASE) {
+    if (USE_SUPABASE) {
       await adminSetUserActive(member.uid, nextActive);
       setPageUsers((prev) =>
         prev.map((u) => (u.uid === member.uid ? { ...u, isActive: nextActive } : u)),
@@ -106,7 +105,7 @@ export default function AdminUsersPage() {
 
   async function resetNicknameChanges(member: User | AdminUserRow) {
     await adminResetNicknameChanges(member.uid);
-    if (USE_FIREBASE) {
+    if (USE_SUPABASE) {
       setPageUsers((prev) =>
         prev.map((u) => (u.uid === member.uid ? { ...u, nicknameChangesUsed: 0 } : u)),
       );
@@ -243,7 +242,7 @@ export default function AdminUsersPage() {
           })}
         </div>
 
-        {USE_FIREBASE && hasMore ? (
+        {USE_SUPABASE && hasMore ? (
           <button
             type="button"
             disabled={loading}

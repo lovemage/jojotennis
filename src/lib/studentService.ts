@@ -1,12 +1,5 @@
-import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  doc,
-  updateDoc,
-  getDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { USE_SUPABASE } from "./config";
+import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
 export async function createStudentPost(data: {
   uid: string;
@@ -19,39 +12,40 @@ export async function createStudentPost(data: {
   budget: string;
   intro: string;
 }): Promise<string> {
-  try {
-    const ref = await addDoc(collection(db, "student_posts"), {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) throw new Error("學員需求需要 Supabase 設定");
+  const supabase = getSupabaseBrowserClient();
+  const { data: row, error } = await supabase
+    .from("student_posts")
+    .insert({
       uid: data.uid,
       nickname: data.nickname,
       title: data.title,
       city: data.city,
       district: data.district,
-      targetNtrp: data.targetLevel,
-      preferTimes: data.preferredTime.split("、").filter(Boolean),
+      target_ntrp: data.targetLevel,
+      prefer_times: data.preferredTime.split("、").filter(Boolean),
       budget: data.budget,
       description: data.intro,
       status: "active",
-      isDeleted: false,
-      deletedAt: null,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    console.log("✅ 需求已寫入，ID：", ref.id);
-    const check = await getDoc(ref);
-    console.log("寫入後讀回：", check.data());
-    return ref.id;
-  } catch (err) {
-    console.error("❌ 寫入失敗：", err);
-    throw err;
-  }
+      is_deleted: false,
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return String((row as { id?: string }).id ?? "");
 }
 
 export async function updateStudentPostStatus(
   postId: string,
   status: "active" | "closed",
 ): Promise<void> {
-  await updateDoc(doc(db, "student_posts", postId), {
-    status,
-    updatedAt: serverTimestamp(),
-  });
+  if (!USE_SUPABASE || !hasSupabaseConfig()) throw new Error("學員需求管理需要 Supabase 設定");
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase
+    .from("student_posts")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", postId);
+  if (error) throw error;
 }

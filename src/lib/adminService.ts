@@ -1,16 +1,6 @@
-import { db } from "./firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getCountFromServer,
-  query,
-  where,
-  updateDoc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
 import { saveCourt } from "./courtService";
+import { USE_SUPABASE } from "./config";
+import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
 export type AdminDashboardCounts = {
   users: number;
@@ -22,63 +12,97 @@ export type AdminDashboardCounts = {
   studentPosts: number;
 };
 
-/** 後台儀表板用聚合計數（需管理員權限通過 Security Rules） */
+type CountResult = {
+  count: number | null;
+  error: { code?: string; message?: string } | null;
+};
+
+async function readCount(request: PromiseLike<CountResult>): Promise<number> {
+  const { count, error } = await request;
+  if (!error) return count ?? 0;
+  if (
+    error.code === "PGRST205" ||
+    /Could not find the table 'public\.[^']+'|relation .* does not exist/i.test(error.message ?? "")
+  ) {
+    return 0;
+  }
+  throw error;
+}
+
+/** 後台儀表板用 Supabase 聚合計數。 */
 export async function fetchAdminDashboardCounts(): Promise<AdminDashboardCounts> {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    throw new Error("管理後台統計需要 Supabase 設定");
+  }
+  const supabase = getSupabaseBrowserClient();
+
   const [
-    usersSnap,
-    openMatchesSnap,
-    clubsSnap,
-    pendingCourtsSnap,
-    newsSnap,
-    coachesSnap,
-    studentSnap,
+    users,
+    openMatches,
+    clubs,
+    pendingCourts,
+    news,
+    coaches,
+    studentPosts,
   ] = await Promise.all([
-    getCountFromServer(query(collection(db, "users"), where("isActive", "==", true))),
-    getCountFromServer(
-      query(collection(db, "matches"), where("isDeleted", "==", false), where("status", "==", "open")),
+    readCount(
+      supabase.from("users").select("*", { count: "exact", head: true }).eq("is_deleted", false).eq("is_active", true),
     ),
-    getCountFromServer(query(collection(db, "clubs"), where("isDeleted", "==", false))),
-    getCountFromServer(query(collection(db, "pending_courts"), where("status", "==", "pending"))),
-    getCountFromServer(collection(db, "news")),
-    getCountFromServer(query(collection(db, "coaches"), where("isDeleted", "==", false))),
-    getCountFromServer(query(collection(db, "student_posts"), where("isDeleted", "==", false))),
+    readCount(
+      supabase.from("matches").select("*", { count: "exact", head: true }).eq("is_deleted", false).eq("status", "open"),
+    ),
+    readCount(supabase.from("clubs").select("*", { count: "exact", head: true }).eq("is_deleted", false)),
+    readCount(supabase.from("pending_courts").select("*", { count: "exact", head: true }).eq("status", "pending")),
+    readCount(supabase.from("news").select("*", { count: "exact", head: true }).eq("is_deleted", false)),
+    readCount(supabase.from("coaches").select("*", { count: "exact", head: true }).eq("is_deleted", false)),
+    readCount(supabase.from("student_posts").select("*", { count: "exact", head: true }).eq("is_deleted", false)),
   ]);
 
   return {
-    users: usersSnap.data().count,
-    openMatches: openMatchesSnap.data().count,
-    clubs: clubsSnap.data().count,
-    pendingCourts: pendingCourtsSnap.data().count,
-    news: newsSnap.data().count,
-    coaches: coachesSnap.data().count,
-    studentPosts: studentSnap.data().count,
+    users,
+    openMatches,
+    clubs,
+    pendingCourts,
+    news,
+    coaches,
+    studentPosts,
   };
 }
 
 /** 核准待審球場：寫入 courts，並標記 pending_courts */
 export async function approvePendingCourt(pendingId: string): Promise<string> {
-  const ref = doc(db, "pending_courts", pendingId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("待審件不存在");
-  const data = snap.data() as Record<string, unknown>;
-  if (String(data.status ?? "pending") !== "pending") throw new Error("此筆已處理");
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    throw new Error("球場審核需要 Supabase 設定");
+  }
 
-  const courtId = doc(collection(db, "courts")).id;
-  const district = String(data.district ?? "");
-  const bookingMethod = String(data.bookingMethod ?? "");
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("pending_courts")
+    .select("*")
+    .eq("id", pendingId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("待審件不存在");
+
+  const row = data as Record<string, unknown>;
+  if (String(row.status ?? "pending") !== "pending") throw new Error("此筆已處理");
+
+  const courtId = `court-${Date.now()}`;
+  const district = String(row.district ?? "");
+  const bookingMethod = String(row.booking_method ?? "");
   const isUrl = /^https?:\/\//i.test(bookingMethod.trim());
-  const desc = String(data.description ?? data.note ?? "");
+  const desc = String(row.description ?? "");
 
   await saveCourt(courtId, {
-    name: String(data.name ?? "未命名球場"),
-    city: String(data.city ?? ""),
+    name: String(row.name ?? "未命名球場"),
+    city: String(row.city ?? ""),
     district,
-    address: String(data.address ?? ""),
+    address: String(row.address ?? ""),
     lat: 0,
     lng: 0,
     surfaceType: "hard",
     indoor: "outdoor",
-    totalCourts: Math.max(1, Number.parseInt(String(data.courtCount ?? "1"), 10) || 1),
+    totalCourts: Math.max(1, Number.parseInt(String(row.court_count ?? "1"), 10) || 1),
     hasNightLight: false,
     phone: "",
     bookingMethod: isUrl ? "" : bookingMethod.trim(),
@@ -87,22 +111,41 @@ export async function approvePendingCourt(pendingId: string): Promise<string> {
     openHours: isUrl ? desc : [bookingMethod, desc].filter(Boolean).join("；") || "",
     status: "active",
   });
-  await updateDoc(ref, {
+  const { error: updateError } = await supabase.from("pending_courts").update({
     status: "approved",
-    reviewedAt: serverTimestamp(),
-    approvedCourtId: courtId,
-  });
+    reviewed_at: new Date().toISOString(),
+    approved_court_id: courtId,
+  }).eq("id", pendingId);
+  if (updateError) throw updateError;
   return courtId;
 }
 
 export async function rejectPendingCourt(pendingId: string): Promise<void> {
-  await updateDoc(doc(db, "pending_courts", pendingId), {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    throw new Error("球場審核需要 Supabase 設定");
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase.from("pending_courts").update({
     status: "rejected",
-    reviewedAt: serverTimestamp(),
-  });
+    reviewed_at: new Date().toISOString(),
+  }).eq("id", pendingId);
+  if (error) throw error;
 }
 
 export async function grantAdminEmail(email: string): Promise<void> {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    throw new Error("管理者授權需要 Supabase 設定");
+  }
+
   const normalized = email.trim().toLowerCase();
-  await setDoc(doc(db, "adminUsers", normalized), { email: normalized });
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("users")
+    .update({ role: "admin", updated_at: new Date().toISOString() })
+    .eq("email", normalized)
+    .select("uid");
+
+  if (error) throw error;
+  if (!data?.length) throw new Error("找不到此 Email 對應的會員");
 }

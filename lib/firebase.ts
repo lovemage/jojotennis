@@ -1,6 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -15,17 +14,15 @@ const firebaseConfig = {
 // Only initialize Firebase in the browser
 let app: FirebaseApp | undefined;
 let auth = undefined as unknown as Auth;
-let db = undefined as unknown as Firestore;
 let storage = undefined as unknown as FirebaseStorage;
 let googleProvider = undefined as unknown as GoogleAuthProvider;
 
 if (typeof window !== "undefined") {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
-  db = getFirestore(app);
   storage = getStorage(app);
   googleProvider = new GoogleAuthProvider();
 }
 
-export { auth, db, storage, googleProvider };
+export { auth, storage, googleProvider };
 export default app;

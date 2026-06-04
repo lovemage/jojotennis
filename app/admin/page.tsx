@@ -6,16 +6,16 @@ import AdminGuard from "@/components/AdminGuard";
 import AdminHeroImagePanel from "@/components/AdminHeroImagePanel";
 import { useApp } from "@/context/AppContext";
 import { fetchAdminDashboardCounts, type AdminDashboardCounts } from "@/lib/adminService";
-import { USE_FIREBASE } from "@/lib/config";
+import { USE_SUPABASE } from "@/lib/config";
 
 export default function AdminPage() {
   const { addAdminUser } = useApp();
   const [adminEmail, setAdminEmail] = useState("");
   const [counts, setCounts] = useState<AdminDashboardCounts | null>(null);
-  const [loading, setLoading] = useState(USE_FIREBASE);
+  const [loading, setLoading] = useState(USE_SUPABASE);
 
   useEffect(() => {
-    if (!USE_FIREBASE) {
+    if (!USE_SUPABASE) {
       setLoading(false);
       return;
     }
@@ -64,7 +64,7 @@ export default function AdminPage() {
           <p className="text-sm font-semibold text-gold">管理者</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">管理後台</h1>
           <p className="mt-4 leading-7 text-parchment">
-            即時統計與內容管理，資料來自 Firestore。
+            即時統計與內容管理，資料來自 Supabase。
           </p>
         </div>
 
@@ -114,53 +114,7 @@ export default function AdminPage() {
 
         <AdminHeroImagePanel />
 
-        <div className="mt-6 rounded-[1.5rem] border border-parchment bg-white p-5 shadow-sm">
-          <p className="text-sm font-semibold text-clay">種子資料</p>
-          <p className="mt-2 text-sm text-muted">
-            若 Firestore 的 courts / clubs / coaches 皆為空，可一鍵匯入 `data/` 種子資料。
-          </p>
-          <SeedButton />
-        </div>
       </section>
     </AdminGuard>
-  );
-}
-
-function SeedButton() {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function runSeed() {
-    setBusy(true);
-    setStatus("");
-    try {
-      const { seedFirestoreIfEmpty } = await import("@/lib/seedService");
-      const result = await seedFirestoreIfEmpty();
-      setStatus(
-        result.skipped
-          ? "已有資料，略過匯入。"
-          : `已匯入 ${result.courts} 球場、${result.clubs} 社團、${result.coaches} 教練。`,
-      );
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "匯入失敗");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!USE_FIREBASE) return null;
-
-  return (
-    <>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void runSeed()}
-        className="mt-4 w-full rounded-full border border-pine px-4 py-3 text-sm font-bold text-pine disabled:opacity-50"
-      >
-        {busy ? "匯入中…" : "匯入種子資料"}
-      </button>
-      {status ? <p className="mt-3 text-sm text-muted">{status}</p> : null}
-    </>
   );
 }

@@ -1,11 +1,5 @@
-import { db } from "./firebase";
-import {
-  doc,
-  getDoc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { USE_SUPABASE } from "./config";
+import { getSupabaseBrowserClient, hasSupabaseConfig } from "./supabase";
 
 export type LegalPageSlug = "privacy" | "terms";
 
@@ -51,39 +45,54 @@ function fromDoc(slug: LegalPageSlug, data: Record<string, unknown>): LegalPageC
     noticeTitle: String(data.noticeTitle ?? ""),
     noticeBody: String(data.noticeBody ?? ""),
     sections: sectionsFromUnknown(data.sections),
-    lastUpdated: String(data.lastUpdated ?? ""),
-    updatedAt:
-      data.updatedAt && typeof (data.updatedAt as { toMillis?: () => number }).toMillis === "function"
-        ? (data.updatedAt as { toMillis: () => number }).toMillis()
-        : undefined,
+    lastUpdated: String(data.last_updated ?? data.lastUpdated ?? ""),
+    updatedAt: data.updated_at ? new Date(String(data.updated_at)).getTime() : undefined,
   };
 }
 
 export async function fetchLegalPage(slug: LegalPageSlug): Promise<LegalPageContent | null> {
-  const snap = await getDoc(doc(db, COLLECTION, slug));
-  if (!snap.exists()) return null;
-  return fromDoc(slug, snap.data() as Record<string, unknown>);
+  if (!USE_SUPABASE || !hasSupabaseConfig()) return null;
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from(COLLECTION)
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? fromDoc(slug, data as Record<string, unknown>) : null;
 }
 
 export function subscribeLegalPage(
   slug: LegalPageSlug,
   cb: (page: LegalPageContent | null) => void,
 ) {
-  return onSnapshot(
-    doc(db, COLLECTION, slug),
-    (snap) => {
-      if (!snap.exists()) {
-        cb(null);
-        return;
-      }
-      cb(fromDoc(slug, snap.data() as Record<string, unknown>));
-    },
-    (err) => console.error(`[legal_pages/${slug}] 監聽失敗：`, err.code, err.message),
-  );
+  if (!USE_SUPABASE || !hasSupabaseConfig()) {
+    cb(null);
+    return () => {};
+  }
+  const supabase = getSupabaseBrowserClient();
+  let active = true;
+  const load = async () => {
+    const page = await fetchLegalPage(slug);
+    if (active) cb(page);
+  };
+  load().catch((err) => console.error(`[legal_pages/${slug}] Supabase 讀取失敗：`, err.message));
+  const channel = supabase
+    .channel(`public:legal_pages:${slug}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: COLLECTION }, () => {
+      void load().catch(() => {});
+    })
+    .subscribe();
+  return () => {
+    active = false;
+    void supabase.removeChannel(channel);
+  };
 }
 
 export async function saveLegalPage(content: LegalPageContent): Promise<void> {
+  if (!USE_SUPABASE || !hasSupabaseConfig()) throw new Error("法務頁面管理需要 Supabase 設定");
   const payload = {
+    slug: content.slug,
     badge: content.badge,
     title: content.title,
     intro: content.intro,
@@ -95,8 +104,10 @@ export async function saveLegalPage(content: LegalPageContent): Promise<void> {
       body: s.body,
       highlight: Boolean(s.highlight),
     })),
-    lastUpdated: content.lastUpdated,
-    updatedAt: serverTimestamp(),
+    last_updated: content.lastUpdated,
+    updated_at: new Date().toISOString(),
   };
-  await setDoc(doc(db, COLLECTION, content.slug), payload, { merge: true });
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase.from(COLLECTION).upsert(payload);
+  if (error) throw error;
 }

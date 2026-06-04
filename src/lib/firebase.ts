@@ -1,6 +1,5 @@
 export {
   auth,
-  db,
   storage,
   googleProvider,
   default,
