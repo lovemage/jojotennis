@@ -12,16 +12,16 @@ const CONCURRENCY = 5;
 async function isAdminCaller(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (!token) return false;
+  if (!token) return { ok: false as const, status: 401, error: "Missing token" };
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
     const email = (decoded.email || "").toLowerCase();
     if (email && SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email)) {
-      return true;
+      return { ok: true as const };
     }
-    return false;
+    return { ok: false as const, status: 403, error: "Forbidden" };
   } catch {
-    return false;
+    return { ok: false as const, status: 401, error: "Invalid token" };
   }
 }
 
@@ -55,8 +55,9 @@ async function listActiveUserEmails(): Promise<Array<{ email: string; uid: strin
 }
 
 export async function POST(request: Request) {
-  if (!(await isAdminCaller(request))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await isAdminCaller(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const body = (await request.json()) as BroadcastBody;

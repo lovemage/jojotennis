@@ -31,13 +31,22 @@ const pageRoutes = [
 
 const adminRoutes = [
   "/admin",
-  "/admin/matches",
-  "/admin/users",
-  "/admin/news",
-  "/admin/email-templates",
+  "/admin/announcements",
   "/admin/coaches",
   "/admin/courts",
+  "/admin/email-broadcast",
+  "/admin/email-templates",
+  "/admin/legal",
+  "/admin/matches",
+  "/admin/messages",
+  "/admin/news",
+  "/admin/news/new",
+  "/admin/news/smoke-missing/edit",
+  "/admin/pages",
   "/admin/pending",
+  "/admin/reviews",
+  "/admin/test",
+  "/admin/users",
 ];
 
 const unauthApiRoutes = [
@@ -46,6 +55,39 @@ const unauthApiRoutes = [
   ["/api/chat/conversations", 401],
   ["/api/chat/messages", 401],
 ];
+
+function manifestRoutes() {
+  const manifest = JSON.parse(readFileSync(".next/server/app-paths-manifest.json", "utf8"));
+  return Object.keys(manifest)
+    .filter((route) => !route.endsWith("/_not-found/page") && !route.endsWith("/favicon.ico/route"))
+    .map((route) => route.replace(/\/page$|\/route$/, ""))
+    .map((route) => (route === "/(tabs)" ? "/" : route.replace(/^\/\(tabs\)/, "")))
+    .map((route) => route.replace(/\[id\]/g, "smoke-missing").replace(/\[slug\]/g, "smoke-missing"))
+    .sort();
+}
+
+function coveredRoutes() {
+  return new Set([
+    ...pageRoutes.map(([route]) => route),
+    ...adminRoutes,
+    ...unauthApiRoutes.map(([route]) => route),
+    "/api/admin/email-templates/preview",
+    "/api/auth/email-verification/confirm",
+    "/api/auth/email-verification/request",
+    "/api/auth/line/callback",
+    "/api/auth/line/login",
+    "/api/cloudinary/delete",
+    "/api/cloudinary/sign",
+    "/api/cron/auto-fill-attendance",
+    "/api/email/broadcast",
+    "/api/email/match-event",
+    "/api/email/welcome",
+    "/api/notify/coach-submitted",
+    "/api/notify/message-to-coach",
+    "/api/webhooks/resend",
+    "/callback",
+  ]);
+}
 
 function envValue(name) {
   const raw = readFileSync(".env.local", "utf8");
@@ -98,8 +140,19 @@ async function checkPages() {
       `Page ${path} expected ${expected}, got ${response.status}`,
     );
     assert(text.length > 0, `Page ${path} returned empty body`);
+    if (response.status === 200) {
+      assert(!text.includes('__next_error__'), `Page ${path} rendered Next error shell`);
+      assert(!text.includes("Application error"), `Page ${path} rendered application error`);
+    }
     console.log(`page ${response.status} ${path}`);
   }
+}
+
+async function checkManifestCoverage() {
+  const covered = coveredRoutes();
+  const missing = manifestRoutes().filter((route) => !covered.has(route));
+  assert(missing.length === 0, `Smoke manifest coverage missing routes: ${missing.join(", ")}`);
+  console.log(`manifest coverage ${covered.size} declared routes`);
 }
 
 async function checkAdminRedirects() {
@@ -122,6 +175,38 @@ async function checkUnauthApis() {
       assert(json.applications.length === 0, "/api/matches must not expose applications publicly");
     }
     console.log(`api ${response.status} ${path}`);
+  }
+}
+
+async function checkApiMethods() {
+  const expectations = [
+    ["GET", "/api/auth/line/login", 307],
+    ["GET", "/api/auth/email-verification/confirm", 307],
+    ["POST", "/api/auth/email-verification/request", 401, {}],
+    ["POST", "/api/cloudinary/sign", 200, { folder: "smoke" }],
+    ["POST", "/api/cloudinary/delete", 400, {}],
+    ["POST", "/api/email/welcome", 400, {}],
+    ["POST", "/api/email/match-event", 400, {}],
+    ["POST", "/api/email/broadcast", 401, {}],
+    ["POST", "/api/notify/coach-submitted", 400, {}],
+    ["POST", "/api/notify/message-to-coach", 400, {}],
+    ["POST", "/api/webhooks/resend", 200, {}],
+    ["POST", "/api/cron/auto-fill-attendance", 200, {}],
+    ["POST", "/api/chat/conversations", 401, {}],
+    ["POST", "/api/chat/messages", 401, {}],
+  ];
+  for (const [method, path, expected, body] of expectations) {
+    const init = {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    };
+    const { response, text } = await request(path, init);
+    assert(
+      response.status === expected,
+      `${method} ${path} expected ${expected}, got ${response.status}: ${text.slice(0, 160)}`,
+    );
+    console.log(`method ${method} ${response.status} ${path}`);
   }
 }
 
@@ -195,9 +280,11 @@ async function checkMatchLoop() {
 }
 
 async function main() {
+  await checkManifestCoverage();
   await checkPages();
   await checkAdminRedirects();
   await checkUnauthApis();
+  await checkApiMethods();
   await checkMatchLoop();
   console.log("smoke routes ok");
 }
