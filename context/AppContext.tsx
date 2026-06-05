@@ -17,6 +17,8 @@ import {
   registerWithEmail,
   loginWithEmail,
   loginWithGoogle as loginWithGoogleService,
+  getLineSessionProfile,
+  clearLineSession,
   logout as logoutService,
 } from "@/lib/authService";
 import {
@@ -117,6 +119,7 @@ interface AppState {
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
+  loginWithLineSession: () => Promise<boolean>;
   logout: () => void;
   register: (data: Partial<User> & { email: string; password: string }) => Promise<boolean>;
   updateProfile: (data: Partial<User>) => void;
@@ -367,8 +370,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loginWithLineSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const profile = await getLineSessionProfile();
+      if (!profile) return false;
+      if (profile.isActive === false) {
+        setAccountDisabledMessage("您的帳號已停用，請聯繫客服");
+        await clearLineSession();
+        setUser(null);
+        setFbUser(null);
+        syncAuthCookies(null, false);
+        return false;
+      }
+      setFbUser(null);
+      setUser(toUiUser(profile.uid, profile.email, profile));
+      setAccountDisabledMessage(null);
+      setLoading(false);
+      setAuthReady(true);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || fbUser || user) return;
+    void loginWithLineSession();
+  }, [authReady, fbUser, loginWithLineSession, user]);
+
   const logout = useCallback(() => {
     void logoutService();
+    void clearLineSession();
     setUser(null);
     setFbUser(null);
     syncAuthCookies(null, false);
@@ -1301,6 +1333,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshUser,
     login,
     loginWithGoogle,
+    loginWithLineSession,
     logout,
     register,
     updateProfile,

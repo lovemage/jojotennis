@@ -7,13 +7,12 @@ type MatchListPayload = {
   applications: MatchApplication[];
 };
 
-async function authHeaders() {
+async function authHeaders(): Promise<Record<string, string>> {
   const token = await auth.currentUser?.getIdToken();
-  if (!token) throw new Error("需要登入");
-  return { Authorization: `Bearer ${token}` };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function optionalAuthHeaders() {
+async function optionalAuthHeaders(): Promise<Record<string, string>> {
   const token = await auth.currentUser?.getIdToken().catch(() => null);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

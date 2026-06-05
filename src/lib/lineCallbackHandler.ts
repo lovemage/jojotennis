@@ -2,8 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { exchangeLineCodeForToken, getLineEmailFromIdToken, getLineProfile } from "@/lib/lineAuth";
+import { LINE_SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createLineSessionToken } from "@/lib/lineSession";
 import { getSupabaseServiceClient, hasSupabaseConfig } from "@/lib/supabase";
 
 const LINE_STATE_COOKIE = "line_oauth_state";
@@ -14,6 +14,7 @@ function getAuthRedirectUrl(request: Request) {
 
 export async function handleLineCallback(request: Request) {
   const redirectUrl = getAuthRedirectUrl(request);
+  let lineSessionToken: string | null = null;
 
   try {
     const url = new URL(request.url);
@@ -30,7 +31,6 @@ export async function handleLineCallback(request: Request) {
     const profile = await getLineProfile(token.access_token);
     const uid = `line_${profile.userId}`;
     const email = getLineEmailFromIdToken(token.id_token);
-    const customToken = await getAdminAuth().createCustomToken(uid, { provider: "line" });
 
     if (hasSupabaseConfig() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const supabase = getSupabaseServiceClient();
@@ -47,13 +47,23 @@ export async function handleLineCallback(request: Request) {
       });
     }
 
-    redirectUrl.searchParams.set("lineToken", customToken);
+    lineSessionToken = createLineSessionToken(uid, email);
+    redirectUrl.searchParams.set("lineSession", "1");
     if (!email) redirectUrl.searchParams.set("requiresEmail", "1");
   } catch (error) {
     redirectUrl.searchParams.set("error", error instanceof Error ? error.message : "LINE login failed");
   }
 
   const response = NextResponse.redirect(redirectUrl);
+  if (lineSessionToken && !redirectUrl.searchParams.has("error")) {
+    response.cookies.set(LINE_SESSION_COOKIE, lineSessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      path: "/",
+    });
+  }
   response.cookies.delete(LINE_STATE_COOKIE);
   return response;
 }

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { useApp } from "@/context/AppContext";
-import { loginWithLineCustomToken } from "@/lib/authService";
 
 function detectLineBrowser(userAgent: string) {
   return /Line\//i.test(userAgent);
@@ -25,6 +24,7 @@ export default function LoginPage() {
     login,
     register,
     loginWithGoogle,
+    loginWithLineSession,
     refreshUser,
     accountDisabledMessage,
     clearAccountDisabledMessage,
@@ -73,20 +73,22 @@ export default function LoginPage() {
   }, [nextPath, router]);
 
   useEffect(() => {
-    const token = searchParams.get("lineToken");
-    if (!token) return;
+    if (searchParams.get("lineSession") !== "1") return;
 
-    loginWithLineCustomToken(token)
-      .then(async (signedInUser) => {
-        await refreshUser();
-        if (searchParams.get("requiresEmail") === "1" || !signedInUser.email) {
+    loginWithLineSession()
+      .then((success) => {
+        if (!success) {
+          setError("LINE 登入失敗");
+          return;
+        }
+        if (searchParams.get("requiresEmail") === "1") {
           setRequiresEmail(true);
           return;
         }
         completeLoginRedirect();
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "LINE 登入失敗"));
-  }, [completeLoginRedirect, refreshUser, searchParams]);
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "LINE 登入失敗"));
+  }, [completeLoginRedirect, loginWithLineSession, searchParams]);
 
   useEffect(() => {
     if (!fbUser || !user) return;

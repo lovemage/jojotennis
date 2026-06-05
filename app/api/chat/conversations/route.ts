@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { SUPER_ADMIN_EMAILS } from "@/lib/config";
 import { getSupabaseServiceClient } from "@/lib/supabase";
+import { LINE_SESSION_COOKIE, verifyLineSessionToken } from "@/lib/lineSession";
 import {
   addRedisConversationParticipant,
   deleteRedisConversation,
@@ -36,7 +38,11 @@ async function verifyFirebaseTokenWithRest(token: string) {
 async function verifyUser(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (!token) return { ok: false as const, status: 401, error: "Missing token" };
+  if (!token) {
+    const lineSession = verifyLineSessionToken(cookies().get(LINE_SESSION_COOKIE)?.value);
+    if (lineSession) return { ok: true as const, uid: lineSession.uid, email: lineSession.email };
+    return { ok: false as const, status: 401, error: "Missing token" };
+  }
   try {
     const user = await verifyFirebaseTokenWithRest(token);
     return { ok: true as const, ...user };

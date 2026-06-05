@@ -290,8 +290,25 @@ export default function MatchScreen() {
             <Text style={styles.sheetHeroSub}>以時間、地點與等級找到最合適的球友</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.sheetSection}>NTRP 等級</Text>
-              <Text style={styles.sheetHint}>最低 — 最高（0.5 級距）</Text>
+              <View style={styles.filterPairRow}>
+                <View style={styles.filterPairItem}>
+                  <Text style={styles.sheetSection}>NTRP 範圍</Text>
+                  <View style={styles.rangePill}>
+                    <Text style={styles.rangePillText}>NTRP {draft.ntrpMin} - {draft.ntrpMax}</Text>
+                  </View>
+                </View>
+                <View style={styles.filterPairItem}>
+                  <Text style={styles.sheetSection}>關鍵字</Text>
+                  <TextInput
+                    style={styles.compactNordicInput}
+                    placeholder="雙打、紅土、新手"
+                    placeholderTextColor="#8A9BA8"
+                    value={draft.keyword}
+                    onChangeText={(t) => setDraft((d) => ({ ...d, keyword: t }))}
+                  />
+                </View>
+              </View>
+              <Text style={styles.sheetHint}>NTRP 最低 — 最高（0.5 級距）</Text>
               <Text style={styles.microLabel}>最低</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {NTRP_LEVELS.map((v) => (
@@ -315,23 +332,47 @@ export default function MatchScreen() {
                 ))}
               </ScrollView>
 
-              <Text style={[styles.sheetSection, { marginTop: 28 }]}>地點</Text>
-              <Text style={styles.sheetHint}>縣市、行政區（兩層）</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                <Pressable
-                  onPress={() => setDraft((d) => ({ ...d, city: '', district: '' }))}
-                  style={[styles.locChip, !draft.city && styles.locChipOn]}>
-                  <Text style={[styles.locChipText, !draft.city && styles.locChipTextOn]}>不限</Text>
-                </Pressable>
-                {TW_CITIES.map((city) => (
-                  <Pressable
-                    key={city}
-                    onPress={() => setDraft((d) => ({ ...d, city, district: '' }))}
-                    style={[styles.locChip, draft.city === city && styles.locChipOn]}>
-                    <Text style={[styles.locChipText, draft.city === city && styles.locChipTextOn]}>{city}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <View style={styles.filterPairRow}>
+                <View style={styles.filterPairItem}>
+                  <Text style={[styles.sheetSection, { marginTop: 28 }]}>縣市</Text>
+                  <Text style={styles.sheetHint}>選擇城市</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                    <Pressable
+                      onPress={() => setDraft((d) => ({ ...d, city: '', district: '' }))}
+                      style={[styles.locChip, !draft.city && styles.locChipOn]}>
+                      <Text style={[styles.locChipText, !draft.city && styles.locChipTextOn]}>不限</Text>
+                    </Pressable>
+                    {TW_CITIES.map((city) => (
+                      <Pressable
+                        key={city}
+                        onPress={() => setDraft((d) => ({ ...d, city, district: '' }))}
+                        style={[styles.locChip, draft.city === city && styles.locChipOn]}>
+                        <Text style={[styles.locChipText, draft.city === city && styles.locChipTextOn]}>{city}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.filterPairItem}>
+                  <Text style={[styles.sheetSection, { marginTop: 28 }]}>時間</Text>
+                  <Text style={styles.sheetHint}>時段快速篩選</Text>
+                  <View style={styles.periodRowCompact}>
+                    {PERIOD_DEF.map((p) => {
+                      const on = draft.periods.includes(p.key);
+                      return (
+                        <Pressable
+                          key={p.key}
+                          onPress={() => togglePeriod(p.key)}
+                          style={[styles.periodChipCompact, on && styles.periodChipOn]}>
+                          <Text style={[styles.periodTitleCompact, on && styles.periodTitleOn]}>{p.label}</Text>
+                          <Text style={[styles.periodSubCompact, on && styles.periodSubOn]}>{p.sub}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
               {draft.city ? (
                 <>
                   <Text style={styles.microLabel}>行政區</Text>
@@ -353,24 +394,7 @@ export default function MatchScreen() {
                 </>
               ) : null}
 
-              <Text style={[styles.sheetSection, { marginTop: 28 }]}>時間</Text>
-              <Text style={styles.sheetHint}>
-                時段與小時皆可多選；兩項都選時只要符合其一即可。未選表示不限制該項。
-              </Text>
-              <View style={styles.periodRow}>
-                {PERIOD_DEF.map((p) => {
-                  const on = draft.periods.includes(p.key);
-                  return (
-                    <Pressable
-                      key={p.key}
-                      onPress={() => togglePeriod(p.key)}
-                      style={[styles.periodChip, on && styles.periodChipOn]}>
-                      <Text style={[styles.periodTitle, on && styles.periodTitleOn]}>{p.label}</Text>
-                      <Text style={[styles.periodSub, on && styles.periodSubOn]}>{p.sub}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <Text style={styles.microLabel}>指定小時（選填）</Text>
               <View style={styles.hourGrid}>
                 {HOURS.map((h) => {
                   const on = draft.hours.includes(h);
@@ -385,29 +409,21 @@ export default function MatchScreen() {
                 })}
               </View>
 
-              <Text style={[styles.sheetSection, { marginTop: 28 }]}>場地屬性</Text>
-              <View style={styles.rowChecks}>
-                <Pressable
-                  onPress={() => setDraft((d) => ({ ...d, requireIndoor: !d.requireIndoor }))}
-                  style={[styles.check, draft.requireIndoor && styles.checkOn]}>
-                  <Text style={[styles.checkText, draft.requireIndoor && styles.checkTextOn]}>室內</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setDraft((d) => ({ ...d, requireOutdoor: !d.requireOutdoor }))}
-                  style={[styles.check, draft.requireOutdoor && styles.checkOn]}>
-                  <Text style={[styles.checkText, draft.requireOutdoor && styles.checkTextOn]}>室外</Text>
-                </Pressable>
+              <View style={styles.venueTypeRow}>
+                <Text style={styles.venueTypeLabel}>場地類型</Text>
+                <View style={styles.rowChecks}>
+                  <Pressable
+                    onPress={() => setDraft((d) => ({ ...d, requireIndoor: !d.requireIndoor }))}
+                    style={[styles.check, draft.requireIndoor && styles.checkOn]}>
+                    <Text style={[styles.checkText, draft.requireIndoor && styles.checkTextOn]}>室內</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setDraft((d) => ({ ...d, requireOutdoor: !d.requireOutdoor }))}
+                    style={[styles.check, draft.requireOutdoor && styles.checkOn]}>
+                    <Text style={[styles.checkText, draft.requireOutdoor && styles.checkTextOn]}>室外</Text>
+                  </Pressable>
+                </View>
               </View>
-
-              <Text style={[styles.sheetSection, { marginTop: 28 }]}>關鍵字</Text>
-              <Text style={styles.sheetHint}>搜尋簡介與球友資訊</Text>
-              <TextInput
-                style={styles.nordicInput}
-                placeholder="例如：雙打、紅土、新手"
-                placeholderTextColor="#8A9BA8"
-                value={draft.keyword}
-                onChangeText={(t) => setDraft((d) => ({ ...d, keyword: t }))}
-              />
 
               <View style={{ height: 24 }} />
             </ScrollView>
@@ -684,6 +700,29 @@ const styles = StyleSheet.create({
   sheetHint: { fontSize: 12, color: '#6B7C8A', marginBottom: 12, lineHeight: 18 },
   microLabel: { fontSize: 11, color: '#6B7C8A', marginBottom: 8, marginTop: 4 },
   chipRow: { flexDirection: 'row', gap: 8, paddingBottom: 4 },
+  filterPairRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  filterPairItem: { flex: 1, minWidth: 0 },
+  rangePill: {
+    minHeight: 47,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#D9E0E6',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  rangePillText: { fontSize: 14, color: '#14232F', fontWeight: '700' },
+  compactNordicInput: {
+    minHeight: 47,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9E0E6',
+    borderRadius: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#14232F',
+  },
   ntrpChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -708,6 +747,7 @@ const styles = StyleSheet.create({
   locChipTextOn: { color: '#FFFFFF' },
   wrapChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   periodRow: { flexDirection: 'row', gap: 10 },
+  periodRowCompact: { flexDirection: 'row', gap: 6 },
   periodChip: {
     flex: 1,
     paddingVertical: 16,
@@ -719,9 +759,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   periodChipOn: { backgroundColor: '#E8EEF2', borderColor: C.nordic },
+  periodChipCompact: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9E0E6',
+    alignItems: 'center',
+  },
   periodTitle: { fontSize: 18, color: '#14232F', fontFamily: 'serif' },
+  periodTitleCompact: { fontSize: 15, color: '#14232F', fontFamily: 'serif' },
   periodTitleOn: { color: C.nordic },
   periodSub: { fontSize: 11, color: '#6B7C8A', marginTop: 4 },
+  periodSubCompact: { fontSize: 9, color: '#6B7C8A', marginTop: 3 },
   periodSubOn: { color: '#14232F' },
   hourGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
   hourCell: {
@@ -739,6 +791,14 @@ const styles = StyleSheet.create({
   hourText: { fontSize: 12, color: '#14232F', fontWeight: '600' },
   hourTextOn: { color: '#FFFFFF' },
   rowChecks: { flexDirection: 'row', gap: 12 },
+  venueTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 28,
+  },
+  venueTypeLabel: { fontSize: 12, letterSpacing: 2, color: '#14232F', fontWeight: '700' },
   check: {
     paddingHorizontal: 20,
     paddingVertical: 12,

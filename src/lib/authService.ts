@@ -3,7 +3,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
-  signInWithCustomToken,
   signOut,
   sendEmailVerification,
   onAuthStateChanged,
@@ -119,11 +118,15 @@ export async function loginWithGoogle(): Promise<FBUser> {
   return cred.user;
 }
 
-export async function loginWithLineCustomToken(token: string): Promise<FBUser> {
-  if (!auth) throw new Error("Firebase not initialized");
-  const cred = await signInWithCustomToken(auth, token);
-  await cred.user.getIdToken(true);
-  return cred.user;
+export async function getLineSessionProfile(): Promise<User | null> {
+  const response = await fetch("/api/auth/line/session", { cache: "no-store" });
+  if (!response.ok) return null;
+  const body = (await response.json()) as { user?: User | null };
+  return body.user ?? null;
+}
+
+export async function clearLineSession(): Promise<void> {
+  await fetch("/api/auth/line/session", { method: "DELETE" }).catch(() => undefined);
 }
 
 export async function getUserProfile(uid: string): Promise<User | null> {
