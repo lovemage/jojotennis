@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppContext";
 import type { ChatMessage, Conversation, Match } from "@/context/AppContext";
+import { MatchStartCountdown } from "@/components/MatchStatusIndicators";
 import {
   clearStoredChatMessages,
   getChatServiceUnavailableMessage,
@@ -275,13 +276,21 @@ function MessagesPageContent() {
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-lg font-bold text-pine">{conversationTitle(selectedConversation)}</h2>
                   <p className="mt-0.5 text-xs text-muted">
-                    {selectedConversation.type === "match"
-                      ? canSendSelectedConversation
-                        ? "球局聊天室"
-                        : "等待主揪核准"
+                  {selectedConversation.type === "match"
+                    ? canSendSelectedConversation
+                      ? "球局聊天室"
+                      : "等待主揪核准"
                       : "私人對話"}
                   {conversationReadyNotice ? ` (${conversationReadyNotice})` : ""}
                   </p>
+                  {selectedMatch && selectedConversation?.type === "match" ? (
+                    <MatchStartCountdown
+                      date={selectedMatch.date}
+                      startTime={selectedMatch.startTime}
+                      live
+                      className="mt-1"
+                    />
+                  ) : null}
                   {isMatchHost && selectedMatch ? (
                     <div className="mt-2 space-y-2">
                       <div className="flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">

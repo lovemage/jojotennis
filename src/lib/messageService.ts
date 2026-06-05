@@ -7,7 +7,6 @@ const MESSAGE_HIDDEN_POLL_MS = 60000;
 const MESSAGE_FETCH_LIMIT = 30;
 const MESSAGE_RATE_LIMIT_BACKOFF_MS = 120000;
 const CHAT_SERVICE_ERROR_PAUSE_MS = 30 * 1000;
-const CONVERSATION_POLL_MS = 120000;
 const ADMIN_CONVERSATION_POLL_MS = 120000;
 const CONVERSATION_HIDDEN_POLL_MS = 120000;
 const MAX_ERROR_BACKOFF_MS = 300000;
@@ -240,7 +239,12 @@ function getAblyClient() {
           }
           callback(null, JSON.parse(text));
         } catch (error) {
-          callback(error as any, undefined as any);
+          callback(
+            error instanceof Error
+              ? error.message || "Ably auth 失敗"
+              : `Ably auth 失敗: ${String(error)}`,
+            null,
+          );
         }
       },
       autoConnect: true,

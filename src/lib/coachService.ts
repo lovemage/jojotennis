@@ -15,7 +15,7 @@ export type UiCoach = {
 };
 
 export type AdminCoach = UiCoach & { isVerified: boolean };
-export type MyCoachState = UiCoach & { isPublished: boolean };
+export type MyCoachState = UiCoach & { isPublished: boolean; isVerified: boolean };
 
 function toUiCoach(row: Record<string, unknown>): UiCoach {
   const bio = String(row.bio ?? "");
@@ -146,7 +146,16 @@ export function subscribeMyCoach(
       .maybeSingle();
     if (error) throw error;
     const row = data as Record<string, unknown> | null;
-    if (active) cb(row ? { ...toUiCoach(row), isPublished: row.is_published !== false } : null);
+    if (active)
+      cb(
+        row
+          ? {
+              ...toUiCoach(row),
+              isPublished: row.is_published !== false,
+              isVerified: (row as Record<string, unknown>).is_verified === true,
+            }
+          : null,
+      );
   };
   load().catch(() => {
     if (active) cb(null);

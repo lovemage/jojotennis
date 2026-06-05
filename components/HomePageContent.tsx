@@ -76,18 +76,20 @@ export default function HomePageContent() {
           {matches.slice(0, 3).map((match) => (
             <Link
               key={match.id}
-              href={`/matches/${match.id}`}
+              href={{
+                pathname: "/match",
+                query: {
+                  city: match.city,
+                  title: match.title,
+                  time: match.date.replaceAll("/", "-"),
+                },
+              }}
               className="block px-5 py-5"
             >
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-clay">
-                {match.city} · {match.ntrpRequired.join("/") || "不限"}
-              </p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-clay">{match.city}</p>
               <h3 className="mt-2 text-lg font-black tracking-tight text-pine">{match.title}</h3>
               <p className="mt-2 text-sm text-muted">
-                {match.date} {match.startTime} · {match.venue}
-              </p>
-              <p className="mt-1 text-sm font-bold text-pine">
-                已邀 {Math.min(match.filledSlots, match.totalSlots)} 人（總共 {match.totalSlots} 人）・還差 {Math.max(match.totalSlots - match.filledSlots, 0)} 人
+                {match.date} {match.startTime}
               </p>
             </Link>
           ))}

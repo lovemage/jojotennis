@@ -2,35 +2,47 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { useApp, type Match, type Message } from "@/context/AppContext";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useApp, type Match } from "@/context/AppContext";
 import type { TennisLevel } from "@/data/tennisLevels";
+import { uploadAvatarImage } from "@/lib/avatarUpload";
+import { getAttendanceStats } from "@/lib/reviewService";
+import { NICKNAME_CHANGE_LIMIT, updateUserProfile } from "@/lib/userService";
+import { subscribeMyCoach, type MyCoachState } from "@/lib/coachService";
 import UserStatsBadge from "@/components/UserStatsBadge";
+import { MatchCapacityProgress } from "@/components/MatchStatusIndicators";
 
 type ProfileDashboardContextProps = {
   cities: string[];
   tennisLevels: TennisLevel[];
 };
 
-type TabId = "messages" | "profile" | "matches" | "coach";
+type TabId = "records" | "profile" | "matches" | "coach";
 
 const tabs: Array<{ id: TabId; label: string }> = [
+  { id: "records", label: "💬 揪團紀錄" },
   { id: "profile", label: "👤 我的資料" },
   { id: "matches", label: "🎾 我的揪球" },
   { id: "coach", label: "🎓 教練/學員" },
 ];
 
-const messageIcons: Record<Message["type"], string> = {
-  match_request: "🎾",
-  match_accepted: "✅",
-  match_declined: "❌",
-  club_join: "👥",
-  coach_msg: "🎓",
-  system: "📢",
-};
-
 function remainingSlots(match: Match) {
   return Math.max(match.totalSlots - match.filledSlots, 0);
+}
+
+function isMatchCompleted(match: Match) {
+  if (match.status === "closed") return true;
+  if (!match.date || !match.endTime) return false;
+  const [y, m, d] = match.date.split(/[\/\-]/).map((n) => Number.parseInt(n, 10));
+  const [h, mi] = match.endTime.split(":").map((n) => Number.parseInt(n, 10));
+  if (!y || !m || !d) return false;
+  const end = new Date(y, m - 1, d, h || 0, mi || 0).getTime();
+  if (Number.isNaN(end)) return false;
+  return Date.now() > end;
+}
+
+function formatMatchDate(match: Pick<Match, "city" | "weekday" | "date">) {
+  return `${match.city} · ${match.weekday} ${match.date}`;
 }
 
 function getApplicantStatusLabel(status: string) {
@@ -59,26 +71,63 @@ export default function ProfileDashboardContext({
     user,
     matches,
     messages,
+    conversations,
     studentNeeds,
-    unreadCount,
     logout,
     updateProfile,
-    markAllRead,
     closeMatch,
     respondToApplicant,
   } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [nicknameDraft, setNicknameDraft] = useState(user?.nickname ?? "");
+  const [attendanceRate, setAttendanceRate] = useState(0);
+  const [nicknameSaving, setNicknameSaving] = useState(false);
+  const [nicknameSaveStatus, setNicknameSaveStatus] = useState("");
+  const [nicknameSaveError, setNicknameSaveError] = useState<string | null>(null);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarSaveStatus, setAvatarSaveStatus] = useState("");
+  const [avatarSaveError, setAvatarSaveError] = useState<string | null>(null);
+  const [myCoach, setMyCoach] = useState<MyCoachState | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     setNicknameDraft(user?.nickname ?? "");
   }, [user?.nickname]);
   const [expandedMatchId, setExpandedMatchId] = useState("");
-  const [expandedMessageId, setExpandedMessageId] = useState("");
+  const attendancePercent = Math.max(0, Math.min(100, Math.round(attendanceRate * 100)));
+  const nicknameChangesRemaining = Math.max(
+    NICKNAME_CHANGE_LIMIT - (user?.nicknameChangesUsed ?? 0),
+    0,
+  );
+  const loginMethodLabel =
+    user?.provider === "google" ? "Google" : user?.provider === "line" ? "LINE" : "Email";
+  const coachVerifiedStatus = myCoach
+    ? myCoach.isVerified
+      ? "已驗證"
+      : "未驗證"
+    : "尚未申請";
+
   useEffect(() => {
-    if (activeTab === "messages") {
-      markAllRead();
+    if (!user?.uid) return;
+    let active = true;
+    getAttendanceStats(user.uid)
+      .then((stats) => {
+        if (active) setAttendanceRate(stats.attendanceRate);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setMyCoach(null);
+      return;
     }
-  }, [activeTab, markAllRead]);
+
+    const unsub = subscribeMyCoach(user.uid, setMyCoach);
+    return () => unsub();
+  }, [user?.uid]);
 
   const myCreatedMatches = useMemo(() => {
     if (!user?.uid) return [];
@@ -89,14 +138,87 @@ export default function ProfileDashboardContext({
     if (!user?.uid) return [];
     return matches.filter((m) => m.applicants.some((a) => a.uid === user.uid));
   }, [matches, user?.uid]);
-  const inboxMessages = useMemo(
-    () => messages.filter((message) => message.toUid === user?.uid),
-    [messages, user?.uid],
+  const matchConversationIds = useMemo(
+    () =>
+      new Set(
+        conversations
+          .filter((conversation) => conversation.type === "match")
+          .map((conversation) => conversation.relatedId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [conversations],
+  );
+  const hostMatchRecords = useMemo(
+    () => myCreatedMatches.filter((match) => isMatchCompleted(match)),
+    [myCreatedMatches],
+  );
+  const playerMatchRecords = useMemo(
+    () =>
+      myAppliedMatches.filter((match) =>
+        isMatchCompleted(match) &&
+        match.applicants.some((applicant) => applicant.uid === user?.uid && applicant.status === "accepted"),
+      ),
+    [myAppliedMatches, user?.uid],
+  );
+  const totalMatchRecords = useMemo(
+    () => [
+      ...hostMatchRecords,
+      ...playerMatchRecords.filter(
+        (match) => !hostMatchRecords.some((hostMatch) => hostMatch.id === match.id),
+      ),
+    ],
+    [hostMatchRecords, playerMatchRecords],
   );
   const myStudentNeeds = useMemo(
     () => studentNeeds.filter((need) => need.ownerUid === user?.uid),
     [studentNeeds, user?.uid],
   );
+
+  async function saveNickname() {
+    const nextNickname = nicknameDraft.trim();
+    if (!user) return;
+    if (!nextNickname) return;
+    if (nextNickname === user.nickname) return;
+    if (nicknameChangesRemaining <= 0) {
+      setNicknameSaveError("已用完三次暱稱更改機會，請聯繫管理員");
+      return;
+    }
+
+    setNicknameSaving(true);
+    setNicknameSaveStatus("");
+    setNicknameSaveError(null);
+    try {
+      await updateUserProfile(user.uid, { nickname: nextNickname });
+      updateProfile({
+        nickname: nextNickname,
+        avatarInitial: nextNickname[0] || user.avatarInitial,
+      });
+      setNicknameSaveStatus("已儲存");
+    } catch (error) {
+      setNicknameSaveError(
+        error instanceof Error ? error.message : "更新失敗，請稍後再試",
+      );
+    } finally {
+      setNicknameSaving(false);
+    }
+  }
+
+  async function uploadAvatar(file: File | null | undefined) {
+    if (!file || !user) return;
+    setAvatarSaving(true);
+    setAvatarSaveStatus("");
+    setAvatarSaveError(null);
+    try {
+      const avatarUrl = await uploadAvatarImage(file, user.uid);
+      await updateUserProfile(user.uid, { avatarUrl });
+      updateProfile({ avatarUrl });
+      setAvatarSaveStatus("頭像更新完成（Cloudinary）");
+    } catch (error) {
+      setAvatarSaveError(error instanceof Error ? error.message : "頭像更新失敗，請稍後再試");
+    } finally {
+      setAvatarSaving(false);
+    }
+  }
 
   function handleLogout() {
     logout();
@@ -163,108 +285,60 @@ export default function ProfileDashboardContext({
             }`}
           >
             {tab.label}
-            {tab.id === "messages" && unreadCount > 0 ? (
-              <span className="ml-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] text-white">
-                {unreadCount}
-              </span>
-            ) : null}
           </button>
         ))}
       </div>
 
-      {activeTab === "messages" ? (
+      {activeTab === "records" ? (
         <section className="mt-6 space-y-3">
-          {inboxMessages.length > 0 ? (
-            inboxMessages.map((message) => (
-              <article
-                key={message.id}
-                className={`rounded-[1.5rem] border border-parchment p-4 shadow-sm ${
-                  message.isRead ? "bg-white" : "bg-parchment/70"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedMessageId(
-                      expandedMessageId === message.id ? "" : message.id,
-                    )
-                  }
-                  className="flex w-full items-start gap-3 text-left"
-                >
-                  {!message.isRead ? (
-                    <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-clay" />
-                  ) : (
-                    <span className="mt-2 h-2 w-2 shrink-0" />
-                  )}
-                  <span className="text-xl">{messageIcons[message.type]}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="block min-w-0 flex-1 truncate text-sm font-bold text-pine">
-                        {message.fromNickname} · {message.content}
-                      </span>
-                      {message.isHandled ? (
-                        <span className="shrink-0 rounded-full bg-muted/15 px-2 py-0.5 text-[11px] font-bold text-muted">
-                          {message.handledStatus === "accepted"
-                            ? "已接受"
-                            : "已婉拒"}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="mt-1 block text-right text-xs text-muted">
-                      {new Date(message.timestamp).toLocaleString("zh-TW", {
-                        hour12: false,
-                      })}
-                    </span>
-                  </span>
-                </button>
-                {expandedMessageId === message.id ? (
-                  <div className="mt-3 rounded-2xl bg-white/70 p-4 text-sm leading-6 text-muted">
-                    {message.content}
-                    {message.isHandled ? (
-                      <p className="mt-4 rounded-2xl bg-ivory p-3 text-center text-sm font-bold text-muted">
-                        已處理：
-                        {message.handledStatus === "accepted"
-                          ? "已接受這位球友"
-                          : "已婉拒這位球友"}
+          <div className="rounded-[1.5rem] bg-white p-5 ring-1 ring-parchment">
+            <p className="text-sm text-muted">
+              主揪：{hostMatchRecords.length} 場 · 參加：{playerMatchRecords.length} 場
+            </p>
+          </div>
+          <div className="mt-3 space-y-3">
+            {totalMatchRecords.length > 0 ? (
+              [...totalMatchRecords]
+                .sort((a, b) => {
+                  const keyA = new Date(a.date).getTime();
+                  const keyB = new Date(b.date).getTime();
+                  return keyB - keyA;
+                })
+                .map((match) => {
+                  const isHost = match.ownerUid === user.uid;
+                  const hasConversation = matchConversationIds.has(match.id);
+                  const canOpenChat = hasConversation && isMatchCompleted(match);
+                  return (
+                    <article
+                      key={match.id}
+                      className="rounded-2xl border border-parchment bg-ivory p-4"
+                    >
+                      <p className="font-bold text-pine">{match.title}</p>
+                      <p className="mt-1 text-sm text-muted">{formatMatchDate(match)}</p>
+                      <p className="mt-1 text-sm text-muted">
+                        角色：{isHost ? "主揪" : "參與者"}
                       </p>
-                    ) : null}
-                    {message.type === "match_request" &&
-                    message.relatedId &&
-                    !message.isHandled ? (
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void Promise.resolve(
-                              respondToApplicant(message.relatedId!, message.fromUid, true),
-                            ).catch(reportApplicantActionError);
-                          }}
-                          className="rounded-full bg-green-600 px-4 py-2 text-sm font-bold text-white"
+                      {canOpenChat ? (
+                        <Link
+                          href={`/messages?conversation=match_${match.id}&from=match`}
+                          className="mt-3 inline-flex rounded-full bg-clay px-4 py-2 text-xs font-bold text-white"
                         >
-                          接受
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void Promise.resolve(
-                              respondToApplicant(message.relatedId!, message.fromUid, false),
-                            ).catch(reportApplicantActionError);
-                          }}
-                          className="rounded-full border border-pine px-4 py-2 text-sm font-bold text-pine"
-                        >
-                          婉拒
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <div className="rounded-[1.5rem] bg-white p-5 text-center text-sm text-muted ring-1 ring-parchment">
-              目前沒有訊息
-            </div>
-          )}
+                          前往聊天室
+                        </Link>
+                      ) : (
+                        <p className="mt-3 text-xs text-muted">
+                          目前沒有聊天室（到期/刪除後將自動隱藏）
+                        </p>
+                      )}
+                    </article>
+                  );
+                })
+            ) : (
+              <p className="rounded-[1.5rem] bg-white p-5 text-center text-sm text-muted ring-1 ring-parchment">
+                還沒有參加過的揪球紀錄
+              </p>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -272,23 +346,104 @@ export default function ProfileDashboardContext({
         <section className="mt-6 rounded-[1.5rem] bg-white p-5 shadow-sm ring-1 ring-parchment">
           <p className="text-sm font-semibold text-clay">個人資料</p>
           <h2 className="mt-2 text-2xl font-bold text-pine">更新球友名片</h2>
+          <div className="mt-5 rounded-2xl border border-parchment bg-ivory p-4">
+            <p className="text-xs font-semibold text-muted">頭像</p>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full bg-pine text-lg font-black text-white">
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  user.avatarInitial
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-pine">更換頭像（Cloudinary 上傳）</p>
+                <p className="mt-1 text-xs text-muted">
+                  建議上傳 1:1 圖片，系統會裁切並轉為 WebP。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarSaving}
+                  className="mt-3 rounded-full border border-pine/20 bg-white px-4 py-2 text-xs font-bold text-pine disabled:opacity-50"
+                >
+                  {avatarSaving ? "上傳中..." : "上傳頭像"}
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    void uploadAvatar(file);
+                  }}
+                  className="sr-only"
+                />
+              </div>
+            </div>
+            {avatarSaveStatus ? (
+              <p className="mt-3 text-xs text-pine">{avatarSaveStatus}</p>
+            ) : null}
+            {avatarSaveError ? (
+              <p className="mt-3 text-xs text-clay">{avatarSaveError}</p>
+            ) : null}
+          </div>
+          <div className="mt-4 space-y-2 rounded-2xl border border-parchment bg-ivory p-4 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted">信箱/登入方式</span>
+              <span className="font-bold text-pine">
+                {user.email || "-"} / {loginMethodLabel}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">教練驗證狀態</span>
+              <span className="font-bold text-pine">{coachVerifiedStatus}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">參加率</span>
+              <span className="font-bold text-pine">{attendancePercent}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">揪團紀錄</span>
+              <span className="font-bold text-pine">
+                主揪 {hostMatchRecords.length} 場 · 參加 {playerMatchRecords.length} 場
+              </span>
+            </div>
+          </div>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="text-xs font-semibold text-muted">暱稱</span>
               <input
                 value={nicknameDraft}
                 onChange={(event) => setNicknameDraft(event.target.value)}
-                onBlur={() => {
-                  const next = nicknameDraft.trim();
-                  if (!next || next === user.nickname) return;
-                  updateProfile({
-                    nickname: next,
-                    avatarInitial: next[0] || user.avatarInitial,
-                  });
-                }}
                 className="mt-2 w-full rounded-2xl border border-parchment bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
               />
             </label>
+            <p className="text-xs text-muted">
+              已使用 {Math.max(0, NICKNAME_CHANGE_LIMIT - nicknameChangesRemaining)} / {NICKNAME_CHANGE_LIMIT}{" "}
+              次修改（剩餘 {nicknameChangesRemaining} 次）
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void saveNickname();
+              }}
+              disabled={
+                nicknameSaving ||
+                !nicknameDraft.trim() ||
+                nicknameDraft.trim() === user.nickname
+              }
+              className="w-full rounded-full bg-pine px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-muted/40"
+            >
+              {nicknameSaving ? "儲存中..." : "儲存暱稱"}
+            </button>
+            {nicknameSaveStatus ? (
+              <p className="text-xs text-pine">{nicknameSaveStatus}</p>
+            ) : null}
+            {nicknameSaveError ? (
+              <p className="text-xs text-clay">{nicknameSaveError}</p>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <label>
                 <span className="text-xs font-semibold text-muted">球齡</span>
@@ -346,16 +501,20 @@ export default function ProfileDashboardContext({
                   const pendingApplicants = match.applicants.filter(
                     (applicant) => applicant.status === "pending",
                   );
-                  const remaining = remainingSlots(match);
-
+                const remaining = remainingSlots(match);
                   return (
                     <article key={match.id} className="rounded-2xl bg-ivory p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-bold text-pine">{match.title}</h3>
                           <p className="mt-1 text-sm text-muted">
-                            {match.city} · {match.weekday} {match.date} · 還差 {remaining} 人
+                            {match.city} · {match.weekday} {match.date}
                           </p>
+                          <MatchCapacityProgress
+                            current={match.filledSlots}
+                            total={match.totalSlots}
+                            className="mt-2"
+                          />
                         </div>
                         {remaining === 0 ? (
                           <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">

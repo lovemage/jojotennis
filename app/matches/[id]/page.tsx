@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useApp, type Match } from "@/context/AppContext";
+import { MatchCapacityProgress, MatchStartCountdown } from "@/components/MatchStatusIndicators";
 import {
   cancelMatch,
   leaveFromMatch,
@@ -118,9 +119,11 @@ export default function MatchDetailPage() {
         <p className="mt-3 text-sm text-muted">
           {match.date} {match.weekday} {match.startTime}–{match.endTime}
         </p>
+        <MatchStartCountdown date={match.date} startTime={match.startTime} live className="mt-1" />
         <p className="mt-1 text-sm text-muted">{match.venue}</p>
+        <MatchCapacityProgress current={match.filledSlots} total={match.totalSlots} className="mt-3" />
         <p className="mt-1 text-sm text-muted">
-          主揪 {match.ownerNickname} · 還差 {Math.max(match.totalSlots - match.filledSlots, 0)} 人
+          主揪 {match.ownerNickname}
           {joinMode === "public"
             ? " · 🔓 公開"
             : joinMode === "private"

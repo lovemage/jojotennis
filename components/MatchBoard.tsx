@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { taiwanCities } from "@/data/cities";
 import { useApp, type Match } from "@/context/AppContext";
 import LoginPromptModal from "@/components/LoginPromptModal";
 import { useUiStore } from "@/stores/useUiStore";
 import PageHero from "@/components/PageHero";
+import { MatchCapacityProgress, MatchStartCountdown } from "@/components/MatchStatusIndicators";
 
 function isMatchExpired(match: Match): boolean {
   if (!match.date || !match.endTime) return false;
@@ -19,6 +20,13 @@ function isMatchExpired(match: Match): boolean {
 }
 
 const ntrpOptions = ["不限", "1", "2", "3", "4", "5", "6–7"];
+const allCityFilterLabel = "全部縣市";
+
+type MatchBoardProps = {
+  initialCityFilter?: string;
+  initialTitleFilter?: string;
+  initialTimeFilter?: string;
+};
 
 function padHour(value: string) {
   const numberValue = Number(value);
@@ -86,12 +94,23 @@ function getMatchConversationBlockedMessage(match: Match, uid?: string) {
   return "加入球局並經主揪核准後才能開啟聊天室。";
 }
 
-export default function MatchBoard() {
+export default function MatchBoard({
+  initialCityFilter = "",
+  initialTitleFilter = "",
+  initialTimeFilter = "",
+}: MatchBoardProps) {
   const router = useRouter();
   const { user, matches, addMatch, updateMatchSettings, applyMatch, getOrCreateConversation } = useApp();
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(matches.length === 0);
   const [activeTab, setActiveTab] = useState<"find" | "create">("find");
+  const [cityFilter, setCityFilter] = useState(() =>
+    initialCityFilter && (taiwanCities as readonly string[]).includes(initialCityFilter)
+      ? initialCityFilter
+      : allCityFilterLabel,
+  );
+  const [titleFilter, setTitleFilter] = useState(initialTitleFilter);
+  const [timeFilter, setTimeFilter] = useState(initialTimeFilter);
 
   useEffect(() => {
     if (matches.length > 0) setLoading(false);
@@ -145,6 +164,35 @@ export default function MatchBoard() {
     joinMode: "approval" as "approval" | "private",
     message: "",
   });
+
+  const filteredMatches = useMemo(() => {
+    const keyword = titleFilter.trim().toLowerCase();
+    const targetDate = timeFilter.trim().replaceAll("/", "-");
+
+    return matches.filter((match) => {
+      if (cityFilter !== allCityFilterLabel && match.city !== cityFilter) return false;
+
+      if (keyword) {
+        const haystack = `${match.title} ${match.city} ${match.district} ${match.ownerNickname} ${match.ntrpRequired.join(" ")}`.toLowerCase();
+        if (!haystack.includes(keyword)) return false;
+      }
+
+      if (targetDate) {
+        if (match.date.replaceAll("/", "-") !== targetDate) return false;
+      }
+
+      return true;
+    });
+  }, [cityFilter, matches, timeFilter, titleFilter]);
+
+  const hasActiveFilter =
+    cityFilter !== allCityFilterLabel || titleFilter.trim().length > 0 || timeFilter.trim().length > 0;
+
+  function clearMatchFilters() {
+    setCityFilter(allCityFilterLabel);
+    setTitleFilter("");
+    setTimeFilter("");
+  }
 
   function requireLogin(action: () => void) {
     if (!user) {
@@ -467,15 +515,66 @@ export default function MatchBoard() {
       </PageHero>
 
       <div className="mt-6 divide-y divide-pine/10 border-y border-pine/10 bg-white shadow-[0_16px_48px_rgba(30,61,47,0.07)]">
+        <div className="px-5 py-4">
+          <p className="text-sm font-bold text-pine">快速篩選（3 欄）</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label>
+              <span className="text-xs font-semibold text-muted">縣市</span>
+              <select
+                value={cityFilter}
+                onChange={(event) => setCityFilter(event.target.value)}
+                className="mt-2 w-full rounded-full border border-pine/20 bg-ivory px-3 py-3 text-sm text-ink outline-none focus:border-clay"
+              >
+                <option>{allCityFilterLabel}</option>
+                {taiwanCities.map((city) => (
+                  <option key={city}>{city}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="text-xs font-semibold text-muted">標題</span>
+              <input
+                value={titleFilter}
+                onChange={(event) => setTitleFilter(event.target.value)}
+                placeholder="輸入球局關鍵字"
+                className="mt-2 w-full rounded-full border border-pine/20 bg-ivory px-4 py-3 text-sm outline-none placeholder:text-muted focus:border-clay"
+              />
+            </label>
+            <label>
+              <span className="text-xs font-semibold text-muted">時間</span>
+              <input
+                type="date"
+                value={timeFilter}
+                onChange={(event) => setTimeFilter(event.target.value)}
+                className="mt-2 w-full rounded-full border border-pine/20 bg-ivory px-4 py-3 text-sm outline-none focus:border-clay"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-xs text-muted">
+              目前
+              <span className="mx-1 font-bold text-pine">{filteredMatches.length}</span>
+              筆
+            </p>
+            <button
+              type="button"
+              onClick={clearMatchFilters}
+              disabled={!hasActiveFilter}
+              className="rounded-full border border-pine px-3 py-1.5 text-xs font-bold text-pine disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              清除
+            </button>
+          </div>
+        </div>
         {loading ? (
           <div className="flex min-h-[200px] items-center justify-center text-sm text-muted">
             載入中...
           </div>
-        ) : matches.length === 0 ? (
+        ) : filteredMatches.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-muted">目前沒有資料</div>
         ) : null}
         {!loading
-          ? matches.map((match) => {
+          ? filteredMatches.map((match) => {
           const remaining = Math.max(match.totalSlots - match.filledSlots, 0);
           const isExpired = isMatchExpired(match);
           const isClosed = match.status === "closed" || isExpired;
@@ -525,9 +624,20 @@ export default function MatchBoard() {
                     {match.weekday} {match.date}　{match.startTime}–{match.endTime}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted">
-                    NTRP {match.ntrpRequired.join("、")}　{match.filledSlots}/
-                    {match.totalSlots} 人・還差 {remaining} 人
+                    NTRP {match.ntrpRequired.join("、")}
                   </p>
+                  <MatchCapacityProgress
+                    current={match.filledSlots}
+                    total={match.totalSlots}
+                    className="mt-2"
+                  />
+                  <MatchStartCountdown
+                    date={match.date}
+                    startTime={match.startTime}
+                    live
+                    compact
+                    className="mt-1.5"
+                  />
                   {match.note ? (
                     <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">
                       {match.note}

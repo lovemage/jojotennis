@@ -98,7 +98,7 @@ export default function CourtDetailPage({ params }: { params: { id: string } }) 
               href={`tel:${court.phone}`}
               className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
             >
-              📞 撥打電話
+              📞 撥打預約
             </a>
           ) : null}
           {court.bookingUrl ? (
@@ -108,7 +108,7 @@ export default function CourtDetailPage({ params }: { params: { id: string } }) 
               rel="noopener noreferrer"
               className="flex h-11 items-center justify-center rounded-lg border border-pine text-sm font-bold text-pine"
             >
-              🌐 球場官方網站
+              🌐 前往預約
             </a>
           ) : null}
         </div>

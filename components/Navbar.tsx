@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useScrollHide } from "@/hooks/useScrollHide";
 import { useUiStore } from "@/stores/useUiStore";
@@ -94,140 +92,59 @@ function NavButton({
   );
 }
 
-function DropdownNavButton({
-  active,
-  label,
-  icon,
-  links,
-  align = "right",
-  isOpen,
-  onToggle,
-  onClose,
-}: {
-  active: boolean;
-  label: string;
-  icon: React.ReactNode;
-  links: Array<{ href: string; label: string; tone: "pine" | "gold" }>;
-  align?: "left" | "right" | "center";
-  isOpen: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-}) {
-  const positionClass =
-    align === "left" ? "left-0" : align === "center" ? "left-1/2 -translate-x-1/2" : "right-0";
-  return (
-    <div className="relative min-w-0 flex-1">
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        onClick={onToggle}
-        className={`relative flex w-full cursor-pointer flex-col items-center justify-center rounded-full px-2 py-2 transition ${
-          active || isOpen ? "bg-gold/18" : "hover:bg-pine/5"
-        }`}
-      >
-        {active ? <span className="absolute top-1 h-1 w-5 rounded-full bg-gold" /> : null}
-        <span className="mt-1 grid h-7 place-items-center">{icon}</span>
-        <span className={`mt-0.5 text-[10px] font-black leading-none ${active ? "text-pine" : "text-muted"}`}>{label}</span>
-      </button>
-
-      {isOpen ? (
-        <div
-          className={`absolute bottom-[calc(100%+0.85rem)] ${positionClass} z-[90] flex w-48 justify-center gap-2 rounded-full border border-pine/10 bg-white p-2 shadow-[0_18px_50px_rgba(30,61,47,0.2)] backdrop-blur-xl`}
-        >
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={onClose}
-              className={`rounded-full px-5 py-2 text-xs font-black ${
-                link.tone === "pine" ? "bg-pine text-white" : "bg-gold text-pine"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const hidden = useScrollHide();
   const forceHidden = useUiStore((s) => s.navHidden);
-  const [openDropdown, setOpenDropdown] = useState<"reviews" | "courts" | null>(null);
-  const navRef = useRef<HTMLDivElement | null>(null);
-
-  const courtCoachActive = pathname === "/courts" || pathname === "/coach";
-  const reviewsNewsActive =
-    pathname === "/reviews" || pathname.startsWith("/reviews/") || pathname === "/news" || pathname.startsWith("/news/");
-
-  useEffect(() => {
-    setOpenDropdown(null);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!openDropdown) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!navRef.current?.contains(event.target as Node)) {
-        setOpenDropdown(null);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openDropdown]);
 
   if (pathname?.startsWith("/admin")) return null;
+  const isHome = pathname === "/";
+  const isCourts = pathname === "/courts";
+  const isMatch = pathname === "/match";
+  const isCoach = pathname === "/coach";
+  const isReviewsOrNews =
+    pathname === "/reviews" ||
+    pathname.startsWith("/reviews/") ||
+    pathname === "/news" ||
+    pathname.startsWith("/news/");
 
   return (
     <nav
       className={`fixed inset-x-0 bottom-0 z-[80] px-4 pb-[calc(0.9rem+env(safe-area-inset-bottom))] transition-transform duration-300 will-change-transform ${
-        forceHidden || (hidden && !openDropdown) ? "translate-y-[calc(100%+1rem)]" : "translate-y-0"
+        forceHidden || hidden ? "translate-y-[calc(100%+1rem)]" : "translate-y-0"
       }`}
     >
-      <div
-        ref={navRef}
-        className="mx-auto flex max-w-md items-center justify-between gap-1 rounded-full border border-pine/10 bg-white/96 p-2 shadow-[0_18px_60px_rgba(30,61,47,0.18)] backdrop-blur-xl"
-      >
+      <div className="mx-auto flex max-w-md items-center justify-between gap-1 rounded-full border border-pine/10 bg-white/96 p-2 shadow-[0_18px_60px_rgba(30,61,47,0.18)] backdrop-blur-xl">
         <NavButton
-          active={pathname === "/"}
+          active={isHome}
           label="首頁"
           onClick={() => router.push("/")}
-          icon={<HomeIcon active={pathname === "/"} />}
-        />
-        <DropdownNavButton
-          active={courtCoachActive}
-          label="球場/教練"
-          icon={<CourtCoachIcon active={courtCoachActive} />}
-          align="right"
-          isOpen={openDropdown === "courts"}
-          onToggle={() => setOpenDropdown((current) => (current === "courts" ? null : "courts"))}
-          onClose={() => setOpenDropdown(null)}
-          links={[
-            { href: "/courts", label: "球場", tone: "pine" },
-            { href: "/coach", label: "教練", tone: "gold" },
-          ]}
+          icon={<HomeIcon active={isHome} />}
         />
         <NavButton
-          active={pathname === "/match"}
+          active={isCourts}
+          label="球場"
+          onClick={() => router.push("/courts")}
+          icon={<CourtCoachIcon active={isCourts} />}
+        />
+        <NavButton
+          active={isMatch}
           label="揪球"
           onClick={() => router.push("/match")}
-          icon={<MatchIcon active={pathname === "/match"} />}
+          icon={<MatchIcon active={isMatch} />}
         />
-        <DropdownNavButton
-          active={reviewsNewsActive}
+        <NavButton
+          active={isCoach}
+          label="教練"
+          onClick={() => router.push("/coach")}
+          icon={<CourtCoachIcon active={isCoach} />}
+        />
+        <NavButton
+          active={isReviewsOrNews}
           label="評測/新聞"
-          icon={<DocumentIcon active={reviewsNewsActive} />}
-          align="center"
-          isOpen={openDropdown === "reviews"}
-          onToggle={() => setOpenDropdown((current) => (current === "reviews" ? null : "reviews"))}
-          onClose={() => setOpenDropdown(null)}
-          links={[
-            { href: "/reviews", label: "評測", tone: "pine" },
-            { href: "/news", label: "新聞", tone: "gold" },
-          ]}
+          onClick={() => router.push("/reviews")}
+          icon={<DocumentIcon active={isReviewsOrNews} />}
         />
       </div>
     </nav>
