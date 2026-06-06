@@ -10,17 +10,14 @@ function clearCookie(name: string) {
   document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
 }
 
-/** Sync auth cookies for middleware route protection (client-side only). */
-export function syncAuthCookies(user: { uid: string } | null, isAdmin: boolean) {
+/** Sync the lightweight client-side UX cookie used by middleware redirects. */
+export function syncAuthCookies(user: { uid: string } | null, _isAdmin: boolean) {
   if (typeof document === "undefined") return;
+  void _isAdmin;
 
   if (user) {
     writeCookie(SESSION_COOKIE, "1", MAX_AGE);
-    if (isAdmin) {
-      writeCookie(ADMIN_COOKIE, "1", MAX_AGE);
-    } else {
-      clearCookie(ADMIN_COOKIE);
-    }
+    clearCookie(ADMIN_COOKIE);
     return;
   }
 
@@ -28,4 +25,4 @@ export function syncAuthCookies(user: { uid: string } | null, isAdmin: boolean) 
   clearCookie(ADMIN_COOKIE);
 }
 
-export { SESSION_COOKIE, ADMIN_COOKIE };
+export { SESSION_COOKIE };

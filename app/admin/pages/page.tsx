@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
 import PageHero from "@/components/PageHero";
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
+import { getClientAuthHeaders } from "@/lib/clientAuthHeaders";
 import {
   DEFAULT_PAGE_HEROES,
   PAGE_HERO_ADMIN_ITEMS,
@@ -36,7 +37,7 @@ async function uploadHeroImage(file: File, key: PageHeroKey) {
   const webpFile = await convertToWebp(file);
   const signResponse = await fetch("/api/cloudinary/sign", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       folder: `page-heroes/${key}`,
       tags: "page-hero,jojo-tennis",

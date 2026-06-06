@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createAiTennisCover, type NewsArticle, type NewsCategory } from "@/data/news";
 import { useApp } from "@/context/AppContext";
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
+import { getClientAuthHeaders } from "@/lib/clientAuthHeaders";
 
 type NewsEditorFormProps = {
   article?: NewsArticle;
@@ -98,7 +99,7 @@ async function uploadCloudinaryImage(file: File, folder: string, width: number) 
   const webpFile = await convertToWebp(file, width);
   const signResponse = await fetch("/api/cloudinary/sign", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ folder, tags: "jojo-tennis,news" }),
   });
 

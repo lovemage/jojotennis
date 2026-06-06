@@ -1,6 +1,7 @@
 "use client";
 
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
+import { getClientAuthHeaders } from "@/lib/clientAuthHeaders";
 
 type CloudinarySignature = {
   cloudName: string;
@@ -43,7 +44,7 @@ export async function uploadAvatarImage(
   const webpFile = await convertAvatarToWebp(file);
   const signResponse = await fetch("/api/cloudinary/sign", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       folder: `users/${userUid}/avatar`,
       tags: "avatar,jojo-tennis",

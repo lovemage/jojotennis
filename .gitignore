@@ -28,6 +28,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
 
 # vercel
@@ -39,3 +40,13 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+.agents
+.claude
+.codegraph
+.codex
+.netlify
+.next
+.vercel
+.vscode
+/doc
+/docs

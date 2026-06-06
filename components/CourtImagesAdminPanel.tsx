@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CourtImage } from "@/lib/supabase.types";
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
 import { fetchCourtById, updateCourtImages } from "@/lib/courtService";
+import { getClientAuthHeaders } from "@/lib/clientAuthHeaders";
 
 type CourtImagesAdminPanelProps = {
   courtId: string;
@@ -49,7 +50,7 @@ export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: C
       for (const file of accepted) {
         const signResponse = await fetch("/api/cloudinary/sign", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ folder: `courts/${courtId}`, tags: "court,jojo-tennis" }),
         });
         if (!signResponse.ok) throw new Error("Cloudinary 簽章失敗");
@@ -104,7 +105,7 @@ export default function CourtImagesAdminPanel({ courtId, initialImages = [] }: C
     setImages(nextImages);
     void fetch("/api/cloudinary/delete", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ publicId }),
     });
   }

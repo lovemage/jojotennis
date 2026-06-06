@@ -8,6 +8,7 @@ import {
   type LandingHeroImage,
 } from "@/lib/landingSettings";
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinaryUrl";
+import { getClientAuthHeaders } from "@/lib/clientAuthHeaders";
 
 async function convertToWebp(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
@@ -46,7 +47,7 @@ export default function AdminHeroImagePanel() {
         const webpFile = await convertToWebp(file);
         const signResponse = await fetch("/api/cloudinary/sign", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await getClientAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ folder: "landing/hero", tags: "landing,hero,jojo-tennis" }),
         });
         if (!signResponse.ok) throw new Error("Cloudinary 簽章失敗");
