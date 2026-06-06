@@ -60,10 +60,14 @@ type AppRow = {
   updated_at: string;
 };
 
-function mapMatch(row: MatchRow) {
+// FINDING-01/02/05: 欄位級授權。
+// - ownerUid 為 Firebase UID，僅回傳給已認證的請求（聊天功能需要），匿名請求一律遮蔽以防使用者枚舉。
+// - joinCode 僅回傳給該球局的主揪，其餘人（含其他已登入者）一律不回傳，避免 private 球局加入碼外洩。
+function mapMatch(row: MatchRow, viewerUid: string | null) {
+  const isOwner = viewerUid !== null && viewerUid === row.owner_uid;
   return {
     matchId: row.id,
-    ownerUid: row.owner_uid,
+    ownerUid: viewerUid !== null ? row.owner_uid : "",
     ownerNickname: row.owner_nickname,
     title: row.title,
     city: row.city,
@@ -79,7 +83,7 @@ function mapMatch(row: MatchRow) {
     status: row.status,
     note: row.note ?? "",
     joinMode: row.join_mode ?? "approval",
-    joinCode: row.join_code ?? undefined,
+    joinCode: isOwner ? row.join_code ?? undefined : undefined,
     isDeleted: row.is_deleted,
     deletedAt: row.deleted_at,
     createdAt: row.created_at,
@@ -258,14 +262,64 @@ async function joinAccepted(match: MatchRow, uid: string, nickname: string) {
   return { ok: true, msg: result.msg ?? "已成功加入球局" };
 }
 
+// FINDING-04: 解析並驗證選用的分頁參數 (limit / page)。
+// 未帶任何參數時回傳 { limit: null } 以維持「回傳全部」的既有行為，不破壞現有前端。
+// 有帶參數時強制整數與上限驗證，非法輸入回傳錯誤訊息供呼叫端轉成 HTTP 400。
+const MAX_PAGE_LIMIT = 100;
+const DEFAULT_PAGE_LIMIT = 20;
+
+function parsePagination(
+  searchParams: URLSearchParams,
+): { limit: number | null; page: number } | { error: string } {
+  const rawLimit = searchParams.get("limit");
+  const rawPage = searchParams.get("page");
+
+  if (rawLimit === null && rawPage === null) {
+    return { limit: null, page: 1 };
+  }
+
+  let limit = DEFAULT_PAGE_LIMIT;
+  if (rawLimit !== null) {
+    if (!/^\d+$/.test(rawLimit)) return { error: "limit 必須為正整數" };
+    const parsed = Number(rawLimit);
+    if (parsed < 1 || parsed > MAX_PAGE_LIMIT) {
+      return { error: `limit 必須介於 1 到 ${MAX_PAGE_LIMIT}` };
+    }
+    limit = parsed;
+  }
+
+  let page = 1;
+  if (rawPage !== null) {
+    if (!/^\d+$/.test(rawPage)) return { error: "page 必須為正整數" };
+    const parsed = Number(rawPage);
+    if (parsed < 1) return { error: "page 必須大於 0" };
+    page = parsed;
+  }
+
+  return { limit, page };
+}
+
 export async function GET(request: Request) {
   const auth = await getOptionalUser(request);
+
+  const pagination = parsePagination(new URL(request.url).searchParams);
+  if ("error" in pagination) {
+    return NextResponse.json({ error: pagination.error }, { status: 400 });
+  }
+
   const supabase = getSupabaseServiceClient();
-  const { data: matches, error: matchError } = await supabase
+  let matchesQuery = supabase
     .from("matches")
     .select("*")
     .eq("is_deleted", false)
     .order("created_at", { ascending: false });
+
+  if (pagination.limit !== null) {
+    const from = (pagination.page - 1) * pagination.limit;
+    matchesQuery = matchesQuery.range(from, from + pagination.limit - 1);
+  }
+
+  const { data: matches, error: matchError } = await matchesQuery;
 
   if (matchError) return NextResponse.json({ error: matchError.message }, { status: 500 });
 
@@ -287,7 +341,7 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    matches: ((matches ?? []) as MatchRow[]).map(mapMatch),
+    matches: ((matches ?? []) as MatchRow[]).map((row) => mapMatch(row, auth?.uid ?? null)),
     applications: applications.map(mapApplication),
   });
 }
